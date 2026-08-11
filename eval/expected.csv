@@ -1,0 +1,4 @@
+filename,transcript_urdu,expected_slot,expected_intent,speaker,notes
+sample_01.wav,جی ہاں تین بجے ٹھیک ہے,15:00,confirm,male_30s,clean line
+sample_02.wav,نہیں مجھے کل چاہیے,tomorrow,reschedule,female_40s,background noise
+sample_03.wav,haan ji 3 baje,15:00,confirm,male_20s,roman urdu + english numeral

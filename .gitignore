@@ -1,0 +1,29 @@
+# Secrets
+.env
+*.pem
+*.key
+
+# Other people's voices and personal data. Never commit these.
+eval/samples/*
+!eval/samples/.gitkeep
+eval/results_*.csv
+recordings/
+audio_cache/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Local state
+*.db
+*.sqlite3
+.DS_Store
+
+# IDE
+.idea/
+.vscode/

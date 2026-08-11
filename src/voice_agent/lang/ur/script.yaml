@@ -1,0 +1,61 @@
+# Component 6. The call script, as data rather than code.
+#
+# Rules this follows:
+#   - Agent lines are fixed text, so tts.py can pre-synthesise and cache them.
+#     Only {placeholders} need TTS at call time.
+#   - Every question has a keypad fallback. Urdu speech recognition on an
+#     8 kHz line will fail sometimes, and landline callers need a way through.
+#   - Questions are narrow on purpose. Fewer possible answers means higher
+#     slot accuracy, which matters more than transcript quality.
+
+name: confirm_appointment
+language: ur-PK
+
+consent: >-
+  السلام علیکم۔ یہ ایک خودکار کال ہے اور معیار کے لیے ریکارڈ کی جا رہی ہے۔
+
+states:
+  - id: verify_identity
+    ask: کیا میری بات {name} سے ہو رہی ہے؟
+    slot: identity_confirmed
+    type: boolean
+    dtmf: {"1": true, "2": false}
+    on_false: wrong_person
+    max_retries: 2
+
+  - id: confirm_appointment
+    ask: >-
+      آپ کی ملاقات {date} کو {time} بجے طے ہے۔
+      کیا یہ وقت آپ کے لیے ٹھیک ہے؟
+    slot: confirmed
+    type: boolean
+    dtmf: {"1": true, "2": false, "3": "repeat"}
+    on_false: reschedule
+    max_retries: 2
+
+  - id: reschedule
+    ask: کوئی اور دن یا وقت بتائیں جو آپ کے لیے مناسب ہو۔
+    slot: preferred_time
+    type: datetime
+    max_retries: 2
+    on_fail: handoff
+
+  - id: wrong_person
+    say: معذرت، غلطی ہو گئی۔ شکریہ۔
+    terminal: true
+
+  - id: handoff
+    say: میں آپ کی بات ہمارے نمائندے سے کرواتا ہوں۔ شکریہ۔
+    terminal: true
+
+  - id: done
+    say: شکریہ۔ آپ کا دن اچھا گزرے۔
+    terminal: true
+
+# Passed to llm.py during extraction. Kept short deliberately.
+extraction_guidance: >-
+  The caller may answer in Urdu script, Roman Urdu, English, or a mix.
+  Treat "haan", "ji", "ji haan", "theek hai", "بالکل" as yes, and "nahi",
+  "نہیں", "no" as no. Times may arrive as "teen bajay", "3 baje" or
+  "three o'clock" and all mean 15:00 unless the caller says morning.
+  Return unclear rather than guessing.

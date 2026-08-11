@@ -1,0 +1,28 @@
+# Everything installed into the `voice-agent` conda env.
+# Add a line here the moment anything is installed, grouped by the component
+# that needs it.
+#
+#   conda activate voice-agent
+#   pip install -r requirements.txt
+
+# --- tooling ---
+pytest>=8.0
+ruff>=0.6
+python-dotenv>=1.0
+
+# --- component 1: audio converter ---
+# ffmpeg is a system binary, not a Python package:
+#   sudo apt install ffmpeg
+
+# --- component 2: stt client ---
+elevenlabs>=2.63
+deepgram-sdk>=7.6
+
+# --- component 3: urdu normaliser ---
+# stdlib only
+
+# --- component 4: llm client ---
+# (added when built)
+
+# --- component 5: tts client ---
+# (added when built)
