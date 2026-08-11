@@ -5,7 +5,7 @@
 #   conda activate voice-agent && python -m ensurepip --upgrade
 #   make install
 
-.PHONY: install test test-live prep eval run fmt clean
+.PHONY: install test test-live prep eval roundtrip run fmt clean
 
 install:                   ## Install everything in requirements.txt
 	python -m pip install -r requirements.txt
@@ -21,6 +21,9 @@ prep:                      ## Band-limit raw samples to 8 kHz telephone audio
 
 eval:                      ## Score STT providers on prepared samples
 	python eval/run_stt_eval.py
+
+roundtrip:                 ## Azure TTS -> 8 kHz -> STT. Plumbing test, not the gate
+	python scripts/roundtrip.py
 
 run:
 	python -m voice_agent.main

@@ -25,4 +25,7 @@ deepgram-sdk>=7.6
 # (added when built)
 
 # --- component 5: tts client ---
-# (added when built)
+azure-cognitiveservices-speech>=1.40
+
+# --- scripts/roundtrip.py: word error rate for the plumbing test ---
+jiwer>=3.0
