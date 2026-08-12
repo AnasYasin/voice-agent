@@ -18,10 +18,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from voice_agent.config import settings
+
 log = logging.getLogger(__name__)
 
-DEFAULT_VOICE = "ur-PK-UzmaNeural"
-SAMPLE_RATE = 24000
+# Azure names its WAV formats rather than taking a rate, so the rate in
+# defaults.yaml has to map onto one. Only these three are useful here.
+_AZURE_FORMATS = {
+    8000: "Riff8Khz16BitMonoPcm",
+    16000: "Riff16Khz16BitMonoPcm",
+    24000: "Riff24Khz16BitMonoPcm",
+}
 
 
 @dataclass(frozen=True)
@@ -41,20 +48,34 @@ class TextToSpeech(Protocol):
 class AzureTTS:
     name = "azure-neural"
 
-    def __init__(self, api_key: str, region: str, voice: str = DEFAULT_VOICE) -> None:
+    def __init__(
+        self, api_key: str, region: str, voice: str, sample_rate: int | None = None
+    ) -> None:
+        """`voice` is required and comes from lang/<code>/, never from here.
+        A default would put the Urdu voice name in a component that is supposed
+        to be language-agnostic, and give the project two places to change it.
+        """
         import azure.cognitiveservices.speech as speechsdk
+
+        sample_rate = sample_rate or settings.tts.sample_rate
+        if sample_rate not in _AZURE_FORMATS:
+            raise ValueError(
+                f"no Azure WAV format for {sample_rate} Hz, "
+                f"expected one of {sorted(_AZURE_FORMATS)}"
+            )
 
         self._sdk = speechsdk
         self.voice = voice
+        self.sample_rate = sample_rate
 
         self.config = speechsdk.SpeechConfig(subscription=api_key, region=region)
         self.config.speech_synthesis_voice_name = voice
         self.config.set_speech_synthesis_output_format(
-            speechsdk.SpeechSynthesisOutputFormat.Riff24Khz16BitMonoPcm
+            getattr(speechsdk.SpeechSynthesisOutputFormat, _AZURE_FORMATS[sample_rate])
         )
 
     def synthesize(self, text: str, dst: Path) -> Speech:
-        """Write `text` to `dst` as a mono 24 kHz WAV."""
+        """Write `text` to `dst` as a mono WAV at the configured rate."""
         if not text.strip():
             raise ValueError("nothing to synthesize, text is empty")
 
@@ -109,7 +130,7 @@ class CachedTTS:
         return digest[:16]
 
 
-def build(api_key: str, region: str, voice: str = DEFAULT_VOICE, cache_dir: Path | None = None):
+def build(api_key: str, region: str, voice: str, cache_dir: Path | None = None):
     """Build the Azure voice, wrapped in the cache unless `cache_dir` is None."""
     tts = AzureTTS(api_key, region, voice)
     if cache_dir is None:

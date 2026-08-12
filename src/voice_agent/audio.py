@@ -19,11 +19,9 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-log = logging.getLogger(__name__)
+from voice_agent.config import AudioConfig, settings
 
-SAMPLE_RATE = 8000
-BAND_LOW_HZ = 300
-BAND_HIGH_HZ = 3400
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -33,34 +31,45 @@ class AudioInfo:
     duration: float
 
 
-def to_telephone(src: Path, dst: Path, codec: str = "pcm_s16le") -> Path:
-    """Convert any audio file to 8 kHz mono telephone-band audio.
+def to_telephone(src: Path, dst: Path, config: AudioConfig | None = None) -> Path:
+    """Convert any audio file to mono telephone-band audio.
 
-    `pcm_s16le` is 16-bit PCM, which every speech API accepts. Pass
-    `pcm_mulaw` for a closer match to what a GSM gateway actually delivers.
+    Band-limiting runs before the resample, which is what stops frequencies
+    above the new Nyquist folding back as aliases.
+
+    To try a different band or codec, pass a modified config rather than
+    editing defaults.yaml:
+
+        replace(settings.audio, codec="pcm_mulaw")
     """
+    config = config or settings.audio
+
     if not src.exists():
         raise FileNotFoundError(src)
 
     dst.parent.mkdir(parents=True, exist_ok=True)
-    log.info("converting %s -> %s", src.name, dst.name)
+    log.info("converting %s -> %s at %d Hz", src.name, dst.name, config.sample_rate)
 
+    # Flags stay paired with their values, one pair per line.
+    # fmt: off
     _run(
         [
             "ffmpeg", "-y", "-loglevel", "error",
             "-i", str(src),
             "-ac", "1",
-            "-ar", str(SAMPLE_RATE),
-            "-af", f"highpass=f={BAND_LOW_HZ},lowpass=f={BAND_HIGH_HZ}",
-            "-c:a", codec,
+            "-ar", str(config.sample_rate),
+            "-af", f"highpass=f={config.band_low_hz},lowpass=f={config.band_high_hz}",
+            "-c:a", config.codec,
             str(dst),
         ]
     )
+    # fmt: on
     return dst
 
 
 def probe(path: Path) -> AudioInfo:
     """Read sample rate, channel count and duration from an audio file."""
+    # fmt: off
     output = _run(
         [
             "ffprobe", "-v", "error",
@@ -70,6 +79,7 @@ def probe(path: Path) -> AudioInfo:
             str(path),
         ]
     )
+    # fmt: on
     data = json.loads(output)
     if not data.get("streams"):
         raise RuntimeError(f"{path.name} has no audio stream")

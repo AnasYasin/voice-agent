@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from voice_agent import audio, stt, tts  # noqa: E402
+from voice_agent.config import settings  # noqa: E402
 from voice_agent.lang.ur.normalize import UrduNormalizer  # noqa: E402
 from voice_agent.lang.ur.voice import KEYTERMS, STT_LANGUAGE, TTS_VOICE  # noqa: E402
 from voice_agent.logging_setup import setup_logging  # noqa: E402
@@ -100,8 +101,8 @@ def report(rows, provider: str) -> None:
     print(f"  round trip via {provider}")
     print(f"  {'-' * 68}")
 
-    for i, said, heard, score, info, cached, phone in rows:
-        flag = "OK " if score <= 0.20 else "!! "
+    for i, said, heard, score, info, cached, _phone in rows:
+        flag = "OK " if score <= settings.evaluation.wer_threshold else "!! "
         print(
             f"  {flag}line {i}   WER {score:6.1%}   {info.sample_rate} Hz  "
             f"{info.channels}ch  {info.duration:.1f}s  {'cached' if cached else 'synth'}"

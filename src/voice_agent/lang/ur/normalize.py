@@ -42,6 +42,7 @@ _WHITESPACE = re.compile(r"\s+")
 # NEEDS A NATIVE SPEAKER TO CHECK. 0-19 are safe. 20-59 are the ones most
 # likely to have an error, and a wrong number word makes the agent sound
 # obviously synthetic.
+# fmt: off
 _URDU_NUMBERS = {
     0: "صفر", 1: "ایک", 2: "دو", 3: "تین", 4: "چار",
     5: "پانچ", 6: "چھ", 7: "سات", 8: "آٹھ", 9: "نو",
@@ -56,6 +57,7 @@ _URDU_NUMBERS = {
     50: "پچاس", 51: "اکاون", 52: "باون", 53: "ترپن", 54: "چون",
     55: "پچپن", 56: "چھپن", 57: "ستاون", 58: "اٹھاون", 59: "انسٹھ",
 }
+# fmt: on
 
 _MORNING = "صبح"
 _AFTERNOON = "دوپہر"

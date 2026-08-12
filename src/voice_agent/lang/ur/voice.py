@@ -9,9 +9,11 @@ TTS_VOICE = "ur-PK-UzmaNeural"  # female. ur-PK-AsadNeural is the male voice.
 # Words the agent actually expects to hear. Deepgram accepts these as keyterms
 # and biases recognition toward them, which matters more on a narrow script
 # than raw accuracy does.
+# fmt: off
 KEYTERMS = [
     "جی ہاں", "ہاں", "نہیں", "ٹھیک ہے", "بالکل",
     "بجے", "صبح", "دوپہر", "شام", "رات",
     "آج", "کل", "پرسوں",
     "haan", "nahi", "theek hai", "baje",
 ]
+# fmt: on

@@ -11,13 +11,15 @@ from pathlib import Path
 
 import pytest
 
-from voice_agent.audio import SAMPLE_RATE, probe, to_telephone
+from voice_agent.audio import probe, to_telephone
+from voice_agent.config import settings
 
 pytestmark = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
 
 
 def make_tone(path: Path, hz: int, seconds: float = 2.0) -> Path:
     """A 48 kHz stereo tone, like a browser or laptop mic would produce."""
+    # fmt: off
     subprocess.run(
         [
             "ffmpeg", "-y", "-loglevel", "error",
@@ -28,6 +30,7 @@ def make_tone(path: Path, hz: int, seconds: float = 2.0) -> Path:
         ],
         check=True,
     )
+    # fmt: on
     return path
 
 
@@ -51,7 +54,7 @@ def test_output_is_telephone_quality(tmp_path: Path) -> None:
 
     info = probe(to_telephone(src, tmp_path / "phone.wav"))
 
-    assert info.sample_rate == SAMPLE_RATE
+    assert info.sample_rate == settings.audio.sample_rate
     assert info.channels == 1
 
 
@@ -64,10 +67,17 @@ def test_duration_is_preserved(tmp_path: Path) -> None:
 
 
 def test_frequencies_above_the_band_are_removed(tmp_path: Path) -> None:
-    """The point of the component. A 5 kHz tone is outside the telephone band
-    and must come out far quieter than one at 1 kHz, which is inside it."""
-    inside = to_telephone(make_tone(tmp_path / "in.wav", hz=1000), tmp_path / "in_phone.wav")
-    outside = to_telephone(make_tone(tmp_path / "out.wav", hz=5000), tmp_path / "out_phone.wav")
+    """The point of the component. Both tones are derived from the configured
+    band, so changing defaults.yaml cannot leave this test quietly asserting
+    the wrong thing."""
+    band = settings.audio
+    inside_hz = (band.band_low_hz + band.band_high_hz) // 2
+    outside_hz = band.sample_rate  # above the band and above Nyquist
+
+    inside = to_telephone(make_tone(tmp_path / "in.wav", hz=inside_hz), tmp_path / "in_phone.wav")
+    outside = to_telephone(
+        make_tone(tmp_path / "out.wav", hz=outside_hz), tmp_path / "out_phone.wav"
+    )
 
     assert mean_volume(outside) < mean_volume(inside) - 20
 
@@ -88,14 +98,17 @@ def test_missing_source_raises(tmp_path: Path) -> None:
 def test_probe_on_file_without_audio_raises_readable_error(tmp_path: Path) -> None:
     """Regression. This used to surface as a bare IndexError."""
     video_only = tmp_path / "blank.mp4"
+    # fmt: off
     subprocess.run(
         [
             "ffmpeg", "-y", "-loglevel", "error",
-            "-f", "lavfi", "-i", "color=c=black:s=64x64:d=1",
+            "-f", "lavfi",
+            "-i", "color=c=black:s=64x64:d=1",
             str(video_only),
         ],
         check=True,
     )
+    # fmt: on
 
     with pytest.raises(RuntimeError, match="no audio stream"):
         probe(video_only)

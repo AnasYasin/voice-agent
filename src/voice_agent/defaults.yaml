@@ -1,0 +1,39 @@
+# Tunable parameters. Every number here changes behaviour or quality, so each
+# one is a knob you may want to turn during Phase 0 rather than a constant.
+#
+# What does NOT belong here:
+#   - Secrets and per-machine values. Those live in .env.
+#   - Language data (voice name, keyterms, the call script). Those live under
+#     lang/<code>/, because adding a language must stay a folder rather than an
+#     edit to this file.
+#
+# Override any of it with a second YAML:  VOICE_AGENT_CONFIG=/path/to/my.yaml
+
+audio:
+  # A real Pakistani phone line. Changing these changes what every accuracy
+  # number in the project means, so change them deliberately and re-run the
+  # gate afterwards.
+  sample_rate: 8000
+  band_low_hz: 300
+  band_high_hz: 3400
+
+  # pcm_s16le is 16-bit PCM, which every speech API accepts.
+  # pcm_mulaw is closer to what a GSM gateway actually delivers.
+  codec: pcm_s16le
+
+stt:
+  # Scribe v1 is the file-based model, which is what Phase 0 scores.
+  # Phase 1 needs scribe_v2_realtime for streaming.
+  elevenlabs_model: scribe_v1
+  deepgram_model: nova-3
+
+tts:
+  # Synthesis stays wideband. audio.to_telephone is the single place that makes
+  # something sound like a phone, so one cached WAV serves a browser demo and a
+  # real 8 kHz call. Only 8000, 16000 and 24000 are mapped to Azure formats.
+  sample_rate: 24000
+
+evaluation:
+  # A line worse than this is flagged in the roundtrip report. It is a reading
+  # aid, not the go/no-go number. The gate is slot accuracy on real recordings.
+  wer_threshold: 0.20

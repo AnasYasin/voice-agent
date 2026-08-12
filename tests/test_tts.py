@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import os
 import wave
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
 
+from voice_agent.config import settings
+from voice_agent.lang.ur.voice import TTS_VOICE
 from voice_agent.tts import AzureTTS, CachedTTS, Speech, TextToSpeech, build
 
 AZURE_KEY = os.getenv("AZURE_SPEECH_KEY", "")
@@ -88,7 +91,7 @@ def test_cache_directory_is_created(tmp_path: Path) -> None:
 
 def test_speech_is_immutable() -> None:
     speech = Speech(path=Path("a.wav"), voice="v", cached=False)
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         speech.cached = True  # type: ignore[misc]
 
 
@@ -100,12 +103,12 @@ def test_speech_is_immutable() -> None:
 def test_azure_writes_a_real_wav(tmp_path: Path) -> None:
     dst = tmp_path / "line.wav"
 
-    result = AzureTTS(AZURE_KEY, AZURE_REGION).synthesize("جی ہاں ٹھیک ہے", dst)
+    result = AzureTTS(AZURE_KEY, AZURE_REGION, TTS_VOICE).synthesize("جی ہاں ٹھیک ہے", dst)
 
     assert result.path.exists()
     with wave.open(str(dst)) as handle:
         assert handle.getnchannels() == 1
-        assert handle.getframerate() == 24000
+        assert handle.getframerate() == settings.tts.sample_rate
         assert handle.getnframes() > 0
 
 
@@ -123,7 +126,7 @@ def test_bad_voice_raises_rather_than_writing_an_empty_file(tmp_path: Path) -> N
 @pytest.mark.live
 @pytest.mark.skipif(not AZURE_KEY, reason="no AZURE_SPEECH_KEY")
 def test_build_wraps_in_cache_when_given_a_directory(tmp_path: Path) -> None:
-    voice = build(AZURE_KEY, AZURE_REGION, cache_dir=tmp_path / "cache")
+    voice = build(AZURE_KEY, AZURE_REGION, TTS_VOICE, cache_dir=tmp_path / "cache")
 
     first = voice.synthesize("شکریہ")
     second = voice.synthesize("شکریہ")

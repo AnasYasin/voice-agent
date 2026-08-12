@@ -53,6 +53,7 @@ def test_spoken_time(hour: int, minute: int, expected: str) -> None:
     assert spoken_time(hour, minute) == expected
 
 
+# fmt: off
 @pytest.mark.parametrize(
     "hour, part",
     [
@@ -66,6 +67,7 @@ def test_part_of_day_boundaries(hour: int, part: str) -> None:
     """A native speaker should confirm these cutoffs. They are judgement calls,
     not facts, and getting them wrong makes the agent sound foreign."""
     assert spoken_time(hour, 0).startswith(part)
+# fmt: on
 
 
 def test_for_speech_replaces_clock_times() -> None:

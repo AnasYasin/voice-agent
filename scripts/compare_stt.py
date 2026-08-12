@@ -20,13 +20,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from dotenv import load_dotenv  # noqa: E402
+from dotenv import load_dotenv
 
-from voice_agent.audio import probe, to_telephone  # noqa: E402
-from voice_agent.lang.ur.normalize import UrduNormalizer  # noqa: E402
-from voice_agent.lang.ur.voice import KEYTERMS, STT_LANGUAGE  # noqa: E402
-from voice_agent.logging_setup import setup_logging  # noqa: E402
-from voice_agent.stt import DeepgramSTT, ElevenLabsSTT  # noqa: E402
+from voice_agent.audio import probe, to_telephone
+from voice_agent.lang.ur.normalize import UrduNormalizer
+from voice_agent.lang.ur.voice import KEYTERMS, STT_LANGUAGE
+from voice_agent.logging_setup import setup_logging
+from voice_agent.stt import DeepgramSTT, ElevenLabsSTT
 
 
 def main() -> int:

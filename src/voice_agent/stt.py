@@ -19,10 +19,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-log = logging.getLogger(__name__)
+from voice_agent.config import settings
 
-ELEVENLABS_MODEL = "scribe_v1"
-DEEPGRAM_MODEL = "nova-3"
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -56,13 +55,13 @@ class ElevenLabsSTT:
         self,
         api_key: str,
         keyterms: list[str] | None = None,
-        model_id: str = ELEVENLABS_MODEL,
+        model_id: str | None = None,
     ) -> None:
         from elevenlabs.client import ElevenLabs
 
         self.client = ElevenLabs(api_key=api_key)
         self.keyterms = keyterms or []
-        self.model_id = model_id
+        self.model_id = model_id or settings.stt.elevenlabs_model
 
     def transcribe(self, path: Path, language: str) -> Transcript:
         log.info("[%s] transcribing %s", self.name, path.name)
@@ -89,13 +88,13 @@ class DeepgramSTT:
     name = "deepgram-nova-3"
 
     def __init__(
-        self, api_key: str, keyterms: list[str] | None = None, model: str = DEEPGRAM_MODEL
+        self, api_key: str, keyterms: list[str] | None = None, model: str | None = None
     ) -> None:
         from deepgram import DeepgramClient
 
         self.client = DeepgramClient(api_key=api_key)
         self.keyterms = keyterms or []
-        self.model = model
+        self.model = model or settings.stt.deepgram_model
 
     def transcribe(self, path: Path, language: str) -> Transcript:
         log.info("[%s] transcribing %s", self.name, path.name)

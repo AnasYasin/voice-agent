@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
@@ -65,7 +66,7 @@ def test_word_confidence_and_language_confidence_are_separate_fields() -> None:
 def test_transcript_is_immutable() -> None:
     """Callers must not be able to edit a transcript in place."""
     transcript = Transcript(text="جی ہاں", provider="test")
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         transcript.text = "نہیں"  # type: ignore[misc]
 
 
@@ -81,6 +82,7 @@ def phone_audio(tmp_path: Path) -> Path:
         pytest.skip("ffmpeg not installed")
 
     path = tmp_path / "phone.wav"
+    # fmt: off
     subprocess.run(
         [
             "ffmpeg", "-y", "-loglevel", "error",
@@ -91,6 +93,7 @@ def phone_audio(tmp_path: Path) -> Path:
         ],
         check=True,
     )
+    # fmt: on
     return path
 
 

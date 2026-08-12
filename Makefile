@@ -5,7 +5,7 @@
 #   conda activate voice-agent && python -m ensurepip --upgrade
 #   make install
 
-.PHONY: install test test-live prep eval roundtrip run fmt clean
+.PHONY: install test test-live lint prep eval roundtrip run fmt clean
 
 install:                   ## Install everything in requirements.txt
 	python -m pip install -r requirements.txt
@@ -15,6 +15,10 @@ test:                      ## Unit tests. No API keys, no network.
 
 test-live:                 ## Tests that call real APIs. Needs keys in .env
 	pytest -m live
+
+lint:                      ## Lint and format check. Also runs inside `make test`
+	ruff check src tests scripts eval
+	ruff format --check src tests scripts eval
 
 prep:                      ## Band-limit raw samples to 8 kHz telephone audio
 	python eval/prepare_audio.py
