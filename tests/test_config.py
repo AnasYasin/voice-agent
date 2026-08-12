@@ -10,6 +10,8 @@ import yaml
 
 from voice_agent.config import DEFAULTS_PATH, Settings, load, settings
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 def write_config(path: Path, overrides: dict) -> Path:
     """Copy the committed defaults, apply overrides, write it out."""
@@ -20,10 +22,12 @@ def write_config(path: Path, overrides: dict) -> Path:
     return path
 
 
-def test_defaults_file_is_shipped_inside_the_package() -> None:
-    """If this fails, an installed wheel loses its settings."""
+def test_defaults_live_in_the_config_directory() -> None:
+    """Config sits at the repo root, deliberately outside the package, so it
+    reads as configuration rather than as another source file."""
     assert DEFAULTS_PATH.exists()
-    assert DEFAULTS_PATH.parent.name == "voice_agent"
+    assert DEFAULTS_PATH.parent.name == "config"
+    assert DEFAULTS_PATH.parent.parent == ROOT
 
 
 def test_defaults_load() -> None:

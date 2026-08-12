@@ -51,19 +51,27 @@ See `eval/README.md` for how to read the result.
 ## Layout
 
 ```
+config/          defaults.yaml, every tunable parameter in one file
 src/voice_agent/
-  providers/     vendor adapters behind protocols, so STT swaps by config
-  conversation/  the state machine. knows nothing about telephony
-  lang/          per-language config, prompts, normalisation
-  audio/         TTS cache, telephone-band simulation, DTMF
-  store/         Postgres and S3
-  agent.py       LiveKit wiring, the only file that sees both sides
+  config.py      the only module that reads config/defaults.yaml
+  audio.py       telephone-band conversion, both directions
+  stt.py         elevenlabs + deepgram behind one protocol
+  tts.py         azure voice + the cache for fixed lines
+  flow.py        the state machine. knows nothing about telephony
+  session.py     wires a call. never knows its transport
+  transport.py   browser, SIP, PSTN
+  lang/ur/       normalisation, keyterms, call script
 
 eval/            Phase 0 accuracy harness
+scripts/         manual tools, compare_stt and roundtrip
 telephony/       Asterisk config, including the NAT settings
 ```
 
-Two design rules worth keeping. `conversation/` must never import telephony,
+One file per component, promoted to a folder at roughly 300 lines or three
+real implementations. Most of the files above are still stubs, see the build
+plan for what is actually done.
+
+Two design rules worth keeping. `flow.py` must never import telephony,
 which is what lets the same logic run over a browser, a softphone and a real
 gateway. And everything language-specific lives under `lang/`, so adding a
 language is a folder rather than a code change.

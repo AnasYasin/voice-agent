@@ -51,6 +51,11 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/voice_agent"]
 
+# Note: config/defaults.yaml sits at the repo root, outside the package, so it
+# is NOT in this wheel. That is fine while this is an app you run from a
+# checkout. If it ever needs to be pip installed, move defaults.yaml back into
+# src/voice_agent/ and change DEFAULTS_PATH in config.py.
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
