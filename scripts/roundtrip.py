@@ -11,7 +11,9 @@ Phase 0 accuracy gate, which needs real recordings of real people.
 
     python scripts/roundtrip.py
     python scripts/roundtrip.py --provider deepgram
-    python scripts/roundtrip.py --keep-wideband   # also keep the 24 kHz file
+
+Synthesised WAVs stay in the cache dir, so a second run is a disk read and
+costs nothing. Delete that directory to force fresh synthesis.
 """
 
 from __future__ import annotations
@@ -51,7 +53,6 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--provider", default=os.getenv("STT_PROVIDER", "elevenlabs"))
     parser.add_argument("--voice", default=TTS_VOICE)
-    parser.add_argument("--keep-wideband", action="store_true")
     args = parser.parse_args()
 
     setup_logging(logging.WARNING)  # quiet, the report below is the point
@@ -88,9 +89,6 @@ def main() -> int:
         score = wer(reference, hypothesis) if reference else 0.0
 
         rows.append((i, line, heard.text, score, info, wide.cached, phone))
-
-        if not args.keep_wideband:
-            wide.path.unlink(missing_ok=True)
 
     report(rows, args.provider)
     return 0
