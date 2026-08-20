@@ -32,6 +32,11 @@ domestic rate, which is why they cost roughly 12 times more per call.
 Phases 0 to 2 need no telephony hardware and no purchase decision. A tester in
 Pakistan can reach the agent over a softphone at zero cost per call.
 
+## Testing it
+
+See [TESTING.md](TESTING.md) for how to run the tests, hear the Urdu voice,
+and talk to the agent in a browser.
+
 ## Start here
 
 Phase 0 is the go/no-go gate. Every accuracy figure used in planning was an
