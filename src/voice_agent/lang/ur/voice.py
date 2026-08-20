@@ -1,6 +1,13 @@
-"""Urdu language settings. Read by language.py, never imported by components."""
+"""Urdu language settings. The whole manifest for this language.
+
+Read by language.py and nothing else. Components receive the Language
+object it builds, so no component ever imports anything Urdu-specific.
+Adding a language is a sibling folder, not a code change.
+"""
 
 from __future__ import annotations
+
+from voice_agent.lang.ur.normalize import UrduNormalizer
 
 LOCALE = "ur-PK"
 STT_LANGUAGE = "ur"
@@ -17,3 +24,6 @@ KEYTERMS = [
     "haan", "nahi", "theek hai", "baje",
 ]
 # fmt: on
+
+# language.py instantiates this. Every language supplies one.
+NORMALIZER = UrduNormalizer
