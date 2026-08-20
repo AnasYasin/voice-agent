@@ -37,3 +37,13 @@ evaluation:
   # A line worse than this is flagged in the roundtrip report. It is a reading
   # aid, not the go/no-go number. The gate is slot accuracy on real recordings.
   wer_threshold: 0.20
+
+llm:
+  # Slot extraction only, never prose. Sonnet handles Urdu code-switching
+  # ("جی haan, 3 baje") better than Haiku; swap to claude-haiku-4-5 for lower
+  # latency once real replies show the accuracy holds.
+  model: claude-sonnet-5
+
+  # Answers are a boolean or a short time string, so the ceiling is tiny.
+  # Anything longer means the model is explaining itself, which it should not.
+  max_tokens: 256

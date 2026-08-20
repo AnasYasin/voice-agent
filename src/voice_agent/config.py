@@ -62,11 +62,18 @@ class EvaluationConfig:
 
 
 @dataclass(frozen=True)
+class LlmConfig:
+    model: str
+    max_tokens: int
+
+
+@dataclass(frozen=True)
 class Settings:
     audio: AudioConfig
     stt: SttConfig
     tts: TtsConfig
     evaluation: EvaluationConfig
+    llm: LlmConfig
 
 
 def load(path: Path | None = None) -> Settings:
@@ -81,6 +88,7 @@ def load(path: Path | None = None) -> Settings:
         stt=SttConfig(**data["stt"]),
         tts=TtsConfig(**data["tts"]),
         evaluation=EvaluationConfig(**data["evaluation"]),
+        llm=LlmConfig(**data["llm"]),
     )
 
 

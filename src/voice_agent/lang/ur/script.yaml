@@ -20,7 +20,9 @@ states:
     slot: identity_confirmed
     type: boolean
     dtmf: {"1": true, "2": false}
+    on_true: confirm_appointment
     on_false: wrong_person
+    on_fail: handoff
     max_retries: 2
 
   - id: confirm_appointment
@@ -30,15 +32,18 @@ states:
     slot: confirmed
     type: boolean
     dtmf: {"1": true, "2": false, "3": "repeat"}
+    on_true: done
     on_false: reschedule
+    on_fail: handoff
     max_retries: 2
 
   - id: reschedule
     ask: کوئی اور دن یا وقت بتائیں جو آپ کے لیے مناسب ہو۔
     slot: preferred_time
     type: datetime
-    max_retries: 2
+    on_true: done
     on_fail: handoff
+    max_retries: 2
 
   - id: wrong_person
     say: معذرت، غلطی ہو گئی۔ شکریہ۔

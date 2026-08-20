@@ -29,7 +29,8 @@ deepgram-sdk>=7.6
 # stdlib only
 
 # --- component 4: llm client ---
-# (added when built)
+anthropic>=0.40
+pydantic>=2.0
 
 # --- component 5: tts client ---
 azure-cognitiveservices-speech>=1.40
