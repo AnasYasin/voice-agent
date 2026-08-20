@@ -32,6 +32,10 @@ deepgram-sdk>=7.6
 anthropic>=0.40
 pydantic>=2.0
 
+# --- components 14, 15: transport and startup ---
+livekit-agents>=1.6
+livekit-plugins-silero>=1.6
+
 # --- component 5: tts client ---
 azure-cognitiveservices-speech>=1.40
 

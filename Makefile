@@ -5,7 +5,7 @@
 #   conda activate voice-agent && python -m ensurepip --upgrade
 #   make install
 
-.PHONY: install test test-live lint prep eval roundtrip run fmt clean
+.PHONY: install test test-live lint prep eval roundtrip run web livekit fmt clean
 
 install:                   ## Install everything in requirements.txt
 	python -m pip install -r requirements.txt
@@ -29,8 +29,14 @@ eval:                      ## Score STT providers on prepared samples
 roundtrip:                 ## Azure TTS -> 8 kHz -> STT. Plumbing test, not the gate
 	python scripts/roundtrip.py
 
-run:
-	python -m voice_agent.main
+livekit:                   ## Start the LiveKit server
+	docker compose up -d livekit
+
+web:                       ## Serve the browser test client on :8080
+	python -m http.server 8080 --directory web
+
+run:                       ## One call. Needs `make livekit` and `make web` first
+	python -m voice_agent.main --name انس --date کل --time چار
 
 fmt:
 	ruff format . && ruff check --fix .
