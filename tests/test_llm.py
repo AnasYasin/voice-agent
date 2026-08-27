@@ -7,12 +7,25 @@ ANTHROPIC_API_KEY. Run them with `make test-live`.
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import FrozenInstanceError
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
 from voice_agent.config import settings
-from voice_agent.llm import BOOLEAN, DATETIME, Answer, ClaudeExtractor, SlotExtractor, build
+from voice_agent.llm import (
+    BOOLEAN,
+    DATETIME,
+    END_CALL,
+    Answer,
+    ClaudeExtractor,
+    ClaudeResponder,
+    SlotExtractor,
+    Utterance,
+    build,
+)
 
 ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
@@ -134,3 +147,156 @@ def test_guidance_from_the_script_is_applied(extractor: ClaudeExtractor) -> None
     guidance = 'Treat "bilkul" and "theek hai" as yes.'
 
     assert extractor.extract("bilkul", BOOLEAN, guidance).value is True
+
+
+# --- streaming, for the live call ---
+
+
+class FakeStream:
+    """Stands in for the SDK's stream helper. Records the request it was given."""
+
+    def __init__(self, pieces: list[str], stop_sequence: str | None) -> None:
+        self.pieces = pieces
+        self.stop_sequence = stop_sequence
+        self.closed = False
+
+    async def __aenter__(self) -> FakeStream:
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        self.closed = True
+
+    @property
+    def text_stream(self) -> Any:
+        async def pieces() -> Any:
+            for piece in self.pieces:
+                yield piece
+
+        return pieces()
+
+    async def get_final_message(self) -> Any:
+        return SimpleNamespace(stop_sequence=self.stop_sequence)
+
+
+class FakeClient:
+    def __init__(self, pieces: list[str], stop_sequence: str | None = None) -> None:
+        self.stream = FakeStream(pieces, stop_sequence)
+        self.request: dict[str, Any] = {}
+        self.messages = SimpleNamespace(stream=self._stream)
+
+    def _stream(self, **request: Any) -> FakeStream:
+        self.request = request
+        return self.stream
+
+
+async def test_the_text_arrives_before_the_reply_is_finished() -> None:
+    client = FakeClient(["پہلا", " دوسرا"])
+    utterance = Utterance(client, model="m")
+
+    assert [piece async for piece in utterance] == ["پہلا", " دوسرا"]
+    assert utterance.text == "پہلا دوسرا"
+
+
+async def test_a_stop_sequence_is_how_a_hangup_is_reported() -> None:
+    """Not JSON. Half an object does not parse, so a structured reply cannot be
+    read until it is complete, which is the wait streaming exists to remove."""
+    utterance = Utterance(FakeClient(["خدا حافظ۔"], stop_sequence=END_CALL), model="m")
+
+    assert not utterance.end_call, "not known until the reply has run out"
+    async for _ in utterance:
+        pass
+
+    assert utterance.end_call
+
+
+async def test_a_normal_reply_does_not_end_the_call() -> None:
+    utterance = Utterance(FakeClient(["جی۔"], stop_sequence=None), model="m")
+    async for _ in utterance:
+        pass
+
+    assert utterance.end_call is False
+
+
+async def test_abandoning_the_reply_closes_the_request() -> None:
+    """Barge-in. Nobody is listening, so stop paying for the rest of it."""
+    client = FakeClient(["پہلا", " دوسرا", " تیسرا"])
+    pieces = Utterance(client, model="m").__aiter__()
+
+    await anext(pieces)
+    await pieces.aclose()
+
+    assert client.stream.closed
+
+
+async def test_the_hangup_marker_is_sent_as_a_stop_sequence() -> None:
+    responder = ClaudeResponder("fake-key")
+    client = FakeClient([])
+    responder.async_client = client
+
+    async for _ in responder.stream("کیا حال ہے", persona="I am an agent."):
+        pass
+
+    assert client.request["stop_sequences"] == [END_CALL]
+    assert END_CALL in client.request["system"][0]["text"]
+    assert "I am an agent." in client.request["system"][0]["text"]
+
+
+async def test_the_streamed_prompt_is_still_cached() -> None:
+    """The rules and the persona are identical on every turn and they are long.
+    Losing the breakpoint would put them back in front of every reply."""
+    responder = ClaudeResponder("fake-key")
+    responder.async_client = client = FakeClient([])
+
+    async for _ in responder.stream("کیا حال ہے"):
+        pass
+
+    assert client.request["system"][0]["cache_control"] == {"type": "ephemeral"}
+
+
+@pytest.mark.live
+@live
+async def test_a_real_reply_arrives_in_pieces() -> None:
+    responder = ClaudeResponder(ANTHROPIC_KEY)
+
+    utterance = responder.stream("السلام علیکم، آپ کون ہیں؟", persona="آپ ایک کلینک کی ایجنٹ ہیں۔")
+    pieces = [piece async for piece in utterance]
+
+    assert len(pieces) > 1, "one piece is not a stream"
+    assert "".join(pieces).strip() == utterance.text.strip()
+    assert not utterance.end_call
+
+
+@pytest.mark.live
+@live
+async def test_a_real_goodbye_ends_the_call() -> None:
+    """And the marker itself never reaches the voice, because the API stops at
+    it rather than writing it."""
+    responder = ClaudeResponder(ANTHROPIC_KEY)
+
+    utterance = responder.stream(
+        "بس یہی تھا، شکریہ، خدا حافظ", persona="آپ ایک کلینک کی ایجنٹ ہیں۔"
+    )
+    async for _ in utterance:
+        pass
+
+    assert utterance.end_call
+    assert END_CALL not in utterance.text
+
+
+@pytest.mark.live
+@live
+async def test_the_first_words_arrive_before_the_last_ones() -> None:
+    """The point of streaming the model at all. A caller waits for the first
+    sentence, not the paragraph."""
+    responder = ClaudeResponder(ANTHROPIC_KEY)
+
+    started = time.monotonic()
+    pieces = responder.stream("مجھے اپنی ملاقات کے بارے میں بتائیں", persona="ایجنٹ").__aiter__()
+    await anext(pieces)
+    first = time.monotonic() - started
+
+    async for _ in pieces:
+        pass
+    whole = time.monotonic() - started
+
+    assert first < whole, f"first piece {first:.2f}s, whole reply {whole:.2f}s"

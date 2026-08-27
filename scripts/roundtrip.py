@@ -33,7 +33,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from voice_agent import audio, stt, tts  # noqa: E402
 from voice_agent.config import settings  # noqa: E402
 from voice_agent.lang.ur.normalize import UrduNormalizer  # noqa: E402
-from voice_agent.lang.ur.voice import KEYTERMS, STT_LANGUAGE, TTS_VOICE  # noqa: E402
+from voice_agent.lang.ur.voice import KEYTERMS, LOCALE, STT_LANGUAGE, TTS_VOICE  # noqa: E402
 from voice_agent.logging_setup import setup_logging  # noqa: E402
 
 # Lines the agent actually says or expects to hear on an appointment call.
@@ -53,6 +53,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--provider", default=os.getenv("STT_PROVIDER", "elevenlabs"))
     parser.add_argument("--voice", default=TTS_VOICE)
+    parser.add_argument(
+        "--locale",
+        default=LOCALE,
+        help="language to pin a multilingual or HD voice to. Empty sends bare text.",
+    )
     args = parser.parse_args()
 
     setup_logging(logging.WARNING)  # quiet, the report below is the point
@@ -67,7 +72,9 @@ def main() -> int:
     if not stt_key:
         parser.error(f"{args.provider.upper()}_API_KEY is empty in .env")
 
-    voice = tts.build(azure_key, azure_region, args.voice, cache_dir=OUT / "cache")
+    voice = tts.build(
+        azure_key, azure_region, args.voice, cache_dir=OUT / "cache", locale=args.locale
+    )
     ears = stt.build(args.provider, stt_key, keyterms=KEYTERMS)
     normalizer = UrduNormalizer()
 

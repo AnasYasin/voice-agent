@@ -11,7 +11,14 @@ from voice_agent.lang.ur.normalize import UrduNormalizer
 
 LOCALE = "ur-PK"
 STT_LANGUAGE = "ur"
-TTS_VOICE = "ur-PK-UzmaNeural"  # female. ur-PK-AsadNeural is the male voice.
+# Female. An Indian English Dragon HD voice speaking Urdu as a secondary
+# locale, which carries a South Asian accent the ur-PK voices do not.
+# Azure has only four native Urdu voices and all are the older Neural tier:
+# ur-PK-UzmaNeural, ur-PK-AsadNeural, ur-IN-GulNeural, ur-IN-SalmanNeural.
+#
+# An HD voice picks its own language when it is handed bare text, so LOCALE
+# above has to reach TTS as well. tts.py wraps the line in <lang> to pin it.
+TTS_VOICE = "en-IN-Neerja:DragonHDLatestNeural"
 
 # Words the agent actually expects to hear. Deepgram accepts these as keyterms
 # and biases recognition toward them, which matters more on a narrow script

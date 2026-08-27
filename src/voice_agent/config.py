@@ -43,17 +43,21 @@ class AudioConfig:
     band_low_hz: int
     band_high_hz: int
     codec: str
+    vad_silence_seconds: float = 0.5
+    frame_ms: int = 20
 
 
 @dataclass(frozen=True)
 class SttConfig:
     elevenlabs_model: str
     deepgram_model: str
+    elevenlabs_realtime_model: str = "scribe_v2_realtime"
 
 
 @dataclass(frozen=True)
 class TtsConfig:
     sample_rate: int
+    lookahead_seconds: float = 1.5
 
 
 @dataclass(frozen=True)
@@ -65,6 +69,9 @@ class EvaluationConfig:
 class LlmConfig:
     model: str
     max_tokens: int
+    chat_model: str = ""
+    chat_max_tokens: int = 160
+    memory_turns: int = 20
 
 
 @dataclass(frozen=True)

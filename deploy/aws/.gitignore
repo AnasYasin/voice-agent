@@ -1,0 +1,5 @@
+# Holds the LiveKit API secret once setup.sh has rendered it.
+livekit.rendered.yaml
+certs/
+acme-webroot/
+calls/

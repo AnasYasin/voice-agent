@@ -1,0 +1,55 @@
+# The demo, on one EC2 box.
+#
+# Three services. Caddy holds the certificate and fronts everything, LiveKit
+# carries the media, and the agent is the thing people are actually talking to.
+#
+# Run from this directory:  docker compose up -d
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    network_mode: host          # TURN and the media range need the real ports
+    environment:
+      PUBLIC_IP: ${PUBLIC_IP:?set PUBLIC_IP to the Elastic IP}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+      - ./acme-webroot:/var/www/acme:ro
+      - caddy_data:/data
+
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    network_mode: host
+    command: --config /etc/livekit.yaml
+    environment:
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET}
+    volumes:
+      - ./livekit.rendered.yaml:/etc/livekit.yaml:ro
+      - ./certs:/certs:ro
+
+  demo:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped        # a native crash in Silero must not end the demo
+    network_mode: host
+    env_file: ../../.env
+    environment:
+      # The agent talks to LiveKit on the same box, unencrypted, never leaving it.
+      LIVEKIT_URL: ws://127.0.0.1:7880
+      # What the browser dials. Through Caddy, so TLS and the /rtc path.
+      DEMO_PUBLIC_LIVEKIT_URL: wss://${PUBLIC_IP}/rtc
+      DEMO_PASSCODE: ${DEMO_PASSCODE:?set DEMO_PASSCODE}
+      DEMO_MAX_CALLS: ${DEMO_MAX_CALLS:-3}
+      DEMO_CALL_SECONDS: ${DEMO_CALL_SECONDS:-300}
+      DEMO_PORT: "8080"
+      AZURE_SPEECH_REGION: ${AZURE_SPEECH_REGION:-centralindia}
+    volumes:
+      # Demo calls are recorded the same way local ones are, so you can listen
+      # to what people actually said to it.
+      - ./calls:/app/calls
+
+volumes:
+  caddy_data:

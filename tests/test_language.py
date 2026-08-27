@@ -33,7 +33,7 @@ def test_bare_code_and_full_locale_both_work() -> None:
 def test_carries_the_voice_and_stt_code() -> None:
     language = load("ur-PK")
 
-    assert language.tts_voice == "ur-PK-UzmaNeural"
+    assert language.tts_voice == "en-IN-Neerja:DragonHDLatestNeural"
     assert language.stt_language == "ur"
 
 
@@ -56,7 +56,7 @@ def test_carries_the_parsed_script() -> None:
     script = load("ur-PK").script
 
     assert isinstance(script, Script)
-    assert script.first == "verify_identity"
+    assert script.first == "confirm_appointment"
 
 
 def test_keyterms_are_copied_not_shared() -> None:

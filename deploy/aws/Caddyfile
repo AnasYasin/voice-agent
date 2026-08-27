@@ -1,0 +1,42 @@
+# TLS in front of the demo app and the LiveKit signalling socket.
+#
+# The certificate is not obtained by Caddy. Let's Encrypt only issues IP
+# certificates under the `shortlived` profile, and Caddy has an open issue
+# against that combination, so acme.sh fetches it and Caddy is handed the
+# files. See README.md.
+{
+	admin off
+	auto_https off
+}
+
+https://{$PUBLIC_IP}:443 {
+	tls /certs/fullchain.pem /certs/key.pem
+
+	# The signalling socket. LiveKit speaks plain ws behind this.
+	handle /rtc* {
+		reverse_proxy livekit:7880
+	}
+
+	# LiveKit's health and region endpoints live at the root of its port, so
+	# they have to be routed before the catch-all reaches the demo app.
+	handle /validate* {
+		reverse_proxy livekit:7880
+	}
+
+	handle {
+		reverse_proxy demo:8080
+	}
+}
+
+# Port 80 stays open only so acme.sh can answer the HTTP-01 challenge.
+# Everything else is bounced to HTTPS, because the microphone will not work
+# on a plain connection anyway.
+http://{$PUBLIC_IP}:80 {
+	handle /.well-known/acme-challenge/* {
+		root * /var/www/acme
+		file_server
+	}
+	handle {
+		redir https://{$PUBLIC_IP}{uri} permanent
+	}
+}

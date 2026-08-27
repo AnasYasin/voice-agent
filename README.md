@@ -52,15 +52,15 @@ python eval/run_stt_eval.py   # score both providers  (stub)
 config/defaults.yaml   tunable parameters
 src/voice_agent/
   config.py     the only module that reads defaults.yaml
-  audio.py      telephone-band conversion
-  stt.py        elevenlabs + deepgram
-  llm.py        claude slot extraction
-  tts.py        azure voice + cache
+  audio.py      telephone-band conversion, file and streaming
+  stt.py        elevenlabs + deepgram, files and realtime
+  llm.py        claude slot extraction + streamed prose
+  tts.py        azure voice + cache, whole files and chunks
   flow.py       state machine over script.yaml
   session.py    wires one call, transport-agnostic
   transport.py  livekit browser (SIP and PSTN later)
   main.py       process startup, the only module reading env
-  lang/ur/      normalisation, keyterms, call script
+  lang/ur/      normalisation, keyterms, sentence ends, call script
 web/            browser test client
 eval/           Phase 0 accuracy harness
 telephony/      Asterisk config
@@ -69,6 +69,13 @@ telephony/      Asterisk config
 Two rules the tests enforce. `session.py` never imports telephony, which is
 what lets one session serve browser, softphone and a real gateway. Nothing
 Urdu-specific lives outside `lang/`, so adding a language is a folder.
+
+A live call streams at every stage: the caller's audio reaches the recognizer
+while they are still speaking, the model's reply is spoken a sentence at a time
+while the rest is still being written, and playback starts on the first chunk.
+That is 4.1 seconds a turn down to about 1.8. See [STREAMING.md](STREAMING.md).
+The campaign path is unchanged and still file-based, because a fixed script
+line is a cached WAV with nothing to wait for.
 
 ## Not built
 

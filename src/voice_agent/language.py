@@ -21,6 +21,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+import yaml
+
 from voice_agent.flow import Script
 
 log = logging.getLogger(__name__)
@@ -28,12 +30,14 @@ log = logging.getLogger(__name__)
 LANGUAGE_ENV_VAR = "AGENT_LANGUAGE"
 DEFAULT_LANGUAGE = "ur-PK"
 SCRIPT_FILE = "script.yaml"
+AGENT_FILE = "agent.yaml"
 
 
 @runtime_checkable
 class Normalizer(Protocol):
     def from_speech(self, text: str) -> str: ...
     def for_speech(self, text: str) -> str: ...
+    def sentences(self, text: str) -> tuple[list[str], str]: ...
 
 
 @dataclass(frozen=True)
@@ -45,6 +49,8 @@ class Language:
     keyterms: list[str]
     normalizer: Any
     script: Script
+    persona: str = ""
+    greeting: str = ""
 
     def __repr__(self) -> str:  # keeps logs readable, the script is large
         return f"Language({self.locale}, voice={self.tts_voice}, script={self.script.name})"
@@ -68,9 +74,20 @@ def load(locale: str | None = None) -> Language:
             f"a voice.py manifest and a {SCRIPT_FILE}."
         ) from None
 
-    script_path = Path(manifest.__file__).parent / SCRIPT_FILE
+    pack = Path(manifest.__file__).parent
+    script_path = pack / SCRIPT_FILE
     if not script_path.exists():
         raise ValueError(f"language {code!r} has a manifest but no {SCRIPT_FILE}")
+
+    # The agent profile is optional. Without it, chat mode simply has no
+    # persona to speak from and the call runs exactly as it always did.
+    agent_path = pack / AGENT_FILE
+    persona = ""
+    greeting = ""
+    if agent_path.exists():
+        profile = yaml.safe_load(agent_path.read_text(encoding="utf-8"))
+        persona = profile.get("persona", "")
+        greeting = profile.get("greeting", "")
 
     language = Language(
         code=code,
@@ -80,6 +97,8 @@ def load(locale: str | None = None) -> Language:
         keyterms=list(manifest.KEYTERMS),
         normalizer=manifest.NORMALIZER(),
         script=Script.load(script_path),
+        persona=persona,
+        greeting=greeting,
     )
     log.info("loaded %s", language)
     return language

@@ -7,6 +7,8 @@
 
 # --- tooling ---
 pytest>=8.0
+# The live call path is async end to end, so most of its tests are too.
+pytest-asyncio>=1.0
 python-dotenv>=1.0
 
 # Pinned to a minor version. tests/test_lint.py asserts the tree is formatted,
@@ -24,6 +26,8 @@ pyyaml>=6.0
 # --- component 2: stt client ---
 elevenlabs>=2.63
 deepgram-sdk>=7.6
+# Scribe v2 realtime is a websocket. The elevenlabs SDK does not pull this in.
+websockets>=14.0
 
 # --- component 3: urdu normaliser ---
 # stdlib only
@@ -31,6 +35,11 @@ deepgram-sdk>=7.6
 # --- component 4: llm client ---
 anthropic>=0.40
 pydantic>=2.0
+
+# --- component 20: demo server ---
+# Already pulled in by livekit-agents, listed because demo.py imports it
+# directly and a transitive dependency is not a promise.
+aiohttp>=3.9
 
 # --- components 14, 15: transport and startup ---
 livekit-agents>=1.6

@@ -15,19 +15,11 @@ consent: >-
   السلام علیکم۔ یہ ایک خودکار کال ہے اور معیار کے لیے ریکارڈ کی جا رہی ہے۔
 
 states:
-  - id: verify_identity
-    ask: کیا میری بات {name} سے ہو رہی ہے؟
-    slot: identity_confirmed
-    type: boolean
-    dtmf: {"1": true, "2": false}
-    on_true: confirm_appointment
-    on_false: wrong_person
-    on_fail: handoff
-    max_retries: 2
-
   - id: confirm_appointment
+    # Opens the call now that the identity question is gone. The name is a
+    # greeting here, not a check, so a mishearing costs nothing.
     ask: >-
-      آپ کی ملاقات {date} کو {time} بجے طے ہے۔
+      السلام علیکم {name}۔ آپ کی ملاقات {date} کو {time} بجے طے ہے۔
       کیا یہ وقت آپ کے لیے ٹھیک ہے؟
     slot: confirmed
     type: boolean
@@ -44,10 +36,6 @@ states:
     on_true: done
     on_fail: handoff
     max_retries: 2
-
-  - id: wrong_person
-    say: معذرت، غلطی ہو گئی۔ شکریہ۔
-    terminal: true
 
   - id: handoff
     say: میں آپ کی بات ہمارے نمائندے سے کرواتا ہوں۔ شکریہ۔

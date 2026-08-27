@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import os
+from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -24,13 +26,16 @@ from livekit.rtc.room import ConnectError
 
 from voice_agent import language as language_module
 from voice_agent import llm, stt, tts
+from voice_agent.flow import Result
 from voice_agent.logging_setup import setup_logging
 from voice_agent.session import Session
 from voice_agent.transport import BrowserTransport
 
 log = logging.getLogger(__name__)
 
-CALLS_DIR = Path("calls")
+# Anchored to the repo, not the shell's cwd. Running from ~ used to scatter
+# recordings into the home directory, where you never look for them.
+CALLS_DIR = Path(__file__).resolve().parents[2] / "calls"
 
 
 def require(name: str) -> str:
@@ -40,7 +45,7 @@ def require(name: str) -> str:
     return value
 
 
-def build_session(call_id: str) -> Session:
+def build_session(call_id: str, chat: bool = False, talk: bool = False) -> Session:
     """Wire one call. Every provider is chosen here and nowhere else."""
     language = language_module.load()
 
@@ -49,6 +54,7 @@ def build_session(call_id: str) -> Session:
         require("AZURE_SPEECH_REGION"),
         language.tts_voice,
         cache_dir=Path(os.getenv("TTS_CACHE_DIR", "./audio_cache")),
+        locale=language.locale,
     )
     provider = os.getenv("STT_PROVIDER", "elevenlabs")
 
@@ -58,21 +64,29 @@ def build_session(call_id: str) -> Session:
         tts=voice,
         extractor=llm.build(require("ANTHROPIC_API_KEY")),
         work_dir=CALLS_DIR / call_id,
+        responder=llm.build_responder(require("ANTHROPIC_API_KEY")) if chat or talk else None,
+        conversation=talk,
     )
 
 
-def build_transport() -> BrowserTransport:
+def build_transport(call_id: str) -> BrowserTransport:
+    # A room per call, not one shared room. A browser tab left open from an
+    # earlier run stays joined, and the agent would greet that ghost instead of
+    # waiting for a live caller. The token carries the room name, so a fresh
+    # room costs the operator nothing.
     return BrowserTransport(
         url=os.getenv("LIVEKIT_URL", "ws://localhost:7880"),
         api_key=require("LIVEKIT_API_KEY"),
         api_secret=require("LIVEKIT_API_SECRET"),
-        room=os.getenv("LIVEKIT_ROOM", "urdu-agent"),
+        room=os.getenv("LIVEKIT_ROOM") or f"urdu-agent-{call_id}",
     )
 
 
-async def run_once(call_id: str, fields: dict[str, str]) -> None:
-    session = build_session(call_id)
-    transport = build_transport()
+async def run_once(
+    call_id: str, fields: dict[str, str], chat: bool = False, talk: bool = False
+) -> None:
+    session = build_session(call_id, chat=chat, talk=talk)
+    transport = build_transport(call_id)
 
     print(f"\n  room    {transport.room_name}")
     print(f"  caller  {transport.caller_token()}\n")
@@ -88,25 +102,130 @@ async def run_once(call_id: str, fields: dict[str, str]) -> None:
             "Start it with:  docker compose up -d livekit"
         ) from None
 
+    save_transcript(session, result, fields)
+
     print(f"\n  outcome  {result.outcome}")
     for slot, value in result.slots.items():
         print(f"  {slot:<20} {value}")
     print(f"\n  audio in {session.work_dir}\n")
 
 
+def save_transcript(session: Session, result: Result, fields: dict[str, str]) -> None:
+    """What was said, next to the audio that carried it.
+
+    Two files on purpose. The JSON is for scoring runs later, the text is for
+    reading a call back without a tool.
+    """
+    record = {
+        "call_id": session.work_dir.name,
+        "recorded_at": datetime.now().isoformat(timespec="seconds"),
+        "fields": fields,
+        "outcome": result.outcome,
+        "slots": result.slots,
+        "turns": [
+            {"n": n, "state": turn.state, "heard": turn.heard, "said": turn.said}
+            for n, turn in enumerate(session.transcript, start=1)
+        ],
+    }
+    (session.work_dir / "transcript.json").write_text(
+        json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    lines = [f"call {record['call_id']}  ({record['recorded_at']})", ""]
+    for turn in record["turns"]:
+        lines.append(f"[{turn['state']}]")
+        lines.append(f"  agent   {turn['said']}")
+        if turn["heard"]:
+            lines.append(f"  caller  {turn['heard']}")
+        lines.append("")
+    lines.append(f"outcome  {result.outcome}")
+    lines += [f"{slot:<20} {value}" for slot, value in result.slots.items()]
+    (session.work_dir / "transcript.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+async def serve() -> None:
+    """The demo server. One process, a call per visitor, until you stop it.
+
+    `run_once` dials one caller and exits. This stays up and answers whoever
+    opens the link, which is the whole difference between testing it yourself
+    and sending it to someone.
+    """
+    from aiohttp import web
+
+    from voice_agent import demo as demo_module
+
+    server = demo_module.Demo(
+        passcode=require("DEMO_PASSCODE"),
+        # What the browser dials, which is not what the agent dials. Behind a
+        # proxy these are genuinely different hosts.
+        public_url=os.getenv("DEMO_PUBLIC_LIVEKIT_URL", "ws://localhost:7880"),
+        max_calls=int(os.getenv("DEMO_MAX_CALLS", "3")),
+        call_seconds=int(os.getenv("DEMO_CALL_SECONDS", "300")),
+    )
+    port = int(os.getenv("DEMO_PORT", "8080"))
+
+    log.info(
+        "demo on :%d, browser dials %s, %d calls at once, %ds each",
+        port,
+        server.public_url,
+        server.max_calls,
+        server.call_seconds,
+    )
+
+    runner = web.AppRunner(demo_module.build_app(server), access_log=None)
+    await runner.setup()
+    await web.TCPSite(runner, port=port).start()
+    try:
+        await asyncio.Event().wait()  # until someone stops the process
+    finally:
+        await runner.cleanup()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run one outbound appointment call.")
-    parser.add_argument("--name", required=True, help="who we are calling")
-    parser.add_argument("--date", required=True, help="appointment day, as it should be spoken")
-    parser.add_argument("--time", required=True, help="appointment time, as it should be spoken")
-    parser.add_argument("--call-id", default="demo", help="folder name under calls/")
+    # Required by the campaign, meaningless in talk mode, so they default
+    # instead of being mandatory. --talk with no other arguments should work.
+    parser.add_argument("--name", default="", help="who we are calling")
+    parser.add_argument("--date", default="", help="appointment day, as it should be spoken")
+    parser.add_argument("--time", default="", help="appointment time, as it should be spoken")
+    parser.add_argument(
+        "--call-id",
+        default=datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+        help="folder name under calls/, defaults to a timestamp so runs are kept",
+    )
+    parser.add_argument(
+        "--talk",
+        action="store_true",
+        help="no script and no questions, just a conversation. Hang up to end it.",
+    )
+    parser.add_argument(
+        "--chat",
+        action="store_true",
+        help="answer off-script questions instead of just repeating the question",
+    )
+    parser.add_argument(
+        "--serve",
+        action="store_true",
+        help="run the demo server instead of one call. Needs DEMO_PASSCODE.",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
     setup_logging(logging.DEBUG if args.verbose else logging.INFO)
     load_dotenv()
 
-    asyncio.run(run_once(args.call_id, {"name": args.name, "date": args.date, "time": args.time}))
+    if args.serve:
+        asyncio.run(serve())
+        return
+
+    asyncio.run(
+        run_once(
+            args.call_id,
+            {"name": args.name, "date": args.date, "time": args.time},
+            chat=args.chat,
+            talk=args.talk,
+        )
+    )
 
 
 if __name__ == "__main__":

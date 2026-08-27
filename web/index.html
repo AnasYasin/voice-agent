@@ -3,55 +3,44 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Urdu voice agent — browser test</title>
+<title>Urdu voice agent</title>
 <style>
   :root { color-scheme: light dark; }
   body {
     font: 16px/1.6 system-ui, sans-serif;
-    max-width: 40rem; margin: 3rem auto; padding: 0 1.25rem;
+    max-width: 32rem; margin: 3rem auto; padding: 0 1.25rem;
   }
   h1 { font-size: 1.35rem; margin-bottom: .25rem; }
   p.sub { margin-top: 0; opacity: .7; font-size: .9rem; }
-  label { display: block; margin: 1.25rem 0 .35rem; font-weight: 600; font-size: .85rem; }
-  input, textarea {
-    width: 100%; padding: .6rem .7rem; font: inherit; font-size: .9rem;
+  label { display: block; margin: 1.75rem 0 .35rem; font-weight: 600; font-size: .85rem; }
+  input {
+    width: 100%; padding: .7rem .8rem; font: inherit;
     border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
     border-radius: .4rem; background: transparent; color: inherit;
   }
-  textarea { min-height: 6rem; font-family: ui-monospace, monospace; font-size: .78rem; }
   button {
-    margin-top: 1.5rem; padding: .7rem 1.4rem; font: inherit; font-weight: 600;
-    border: 0; border-radius: .4rem; cursor: pointer;
-    background: currentColor; color: Canvas;
+    margin-top: 1.25rem; padding: .8rem 1.4rem; font: inherit; font-weight: 600;
+    width: 100%; border: 0; border-radius: .4rem; cursor: pointer;
+    background: #2563eb; color: #fff;
   }
   button:disabled { opacity: .45; cursor: not-allowed; }
   #status {
     margin-top: 1.5rem; padding: .8rem 1rem; border-radius: .4rem; font-size: .9rem;
     background: color-mix(in srgb, currentColor 8%, transparent);
   }
-  ol { padding-left: 1.2rem; font-size: .9rem; opacity: .8; }
 </style>
 </head>
 <body>
 
 <h1>Urdu voice agent</h1>
-<p class="sub">Browser test client. Talk to the agent as if you were the patient.</p>
+<p class="sub">Enter the code, allow the microphone, and talk to it in Urdu.</p>
 
-<ol>
-  <li>Start LiveKit: <code>docker compose up -d livekit</code></li>
-  <li>Start the agent: <code>make run</code></li>
-  <li>Paste the caller token it prints below, then Connect</li>
-</ol>
-
-<label for="url">LiveKit URL</label>
-<input id="url" value="ws://localhost:7880" />
-
-<label for="token">Caller token</label>
-<textarea id="token" placeholder="paste the token the agent printed"></textarea>
+<label for="passcode">Access code</label>
+<input id="passcode" type="password" autocomplete="off" inputmode="text" />
 
 <button id="go">Connect and talk</button>
 
-<div id="status">Not connected.</div>
+<div id="status">Ready.</div>
 
 <script type="module">
 import {
@@ -60,14 +49,51 @@ import {
 
 const status = document.getElementById('status');
 const button = document.getElementById('go');
+const passcode = document.getElementById('passcode');
 const say = (text) => { status.textContent = text; };
 
+// The microphone needs a secure context. Say so plainly, because the failure
+// otherwise surfaces as an undefined getUserMedia deep inside connect, and on
+// a shared link the person reading it is not the person who deployed it.
+if (!window.isSecureContext || !navigator.mediaDevices) {
+  say('This page needs HTTPS to use the microphone.');
+  button.disabled = true;
+}
+
+passcode.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') button.click();
+});
+
 button.onclick = async () => {
-  const url = document.getElementById('url').value.trim();
-  const token = document.getElementById('token').value.trim();
-  if (!token) return say('Paste the caller token first.');
+  const code = passcode.value.trim();
+  if (!code) return say('Enter the access code first.');
 
   button.disabled = true;
+  say('Connecting…');
+
+  // The token is fetched, never pasted. The server mints one per visitor and
+  // starts an agent for that room before answering, so the caller is not
+  // sitting in an empty room waiting for a process to be asked to exist.
+  let url, token;
+  try {
+    const response = await fetch('/api/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ passcode: code }),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      say(body.error || 'Could not start the call.');
+      button.disabled = false;
+      return;
+    }
+    ({ url, token } = body);
+  } catch (error) {
+    say('Could not reach the server.');
+    button.disabled = false;
+    return;
+  }
+
   const room = new Room({ adaptiveStream: false, dynacast: false });
 
   // The agent speaks at 8 kHz on purpose. Play it back untouched so the demo
@@ -75,16 +101,15 @@ button.onclick = async () => {
   room.on(RoomEvent.TrackSubscribed, (track) => {
     if (track.kind === 'audio') {
       track.attach().play?.();
-      say('Connected. The agent is speaking — answer in Urdu when it asks.');
+      say('Connected. The agent is speaking, answer in Urdu.');
     }
   });
   room.on(RoomEvent.Disconnected, () => {
-    say('Call ended. Check the terminal for the outcome and slots.');
+    say('Call ended.');
     button.disabled = false;
   });
 
   try {
-    say('Connecting…');
     await room.connect(url, token);
 
     // Browser mics default to 48 kHz with noise suppression and AGC. Those
