@@ -16,6 +16,11 @@ rtc:
 
 turn:
   enabled: true
+  # LiveKit refuses to start with TURN enabled and no domain ("TURN domain
+  # required"), even on a bare IP. It is only used as the TURN realm string
+  # and for the TLS cert name; the IP certificate covers it and clients do
+  # not send SNI for an address anyway.
+  domain: ${PUBLIC_IP}
   # UDP TURN. This is the one that rescues callers on mobile data, where
   # carrier NAT commonly blocks the 50000-50100 range.
   udp_port: 3478

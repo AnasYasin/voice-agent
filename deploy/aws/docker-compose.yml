@@ -34,13 +34,16 @@ services:
       context: ../..
       dockerfile: Dockerfile
     restart: unless-stopped        # a native crash in Silero must not end the demo
+    command: python -m voice_agent.main --serve --verbose
     network_mode: host
     env_file: ../../.env
     environment:
       # The agent talks to LiveKit on the same box, unencrypted, never leaving it.
       LIVEKIT_URL: ws://127.0.0.1:7880
-      # What the browser dials. Through Caddy, so TLS and the /rtc path.
-      DEMO_PUBLIC_LIVEKIT_URL: wss://${PUBLIC_IP}/rtc
+      # What the browser dials. Through Caddy for TLS. No /rtc suffix: the
+      # LiveKit client appends /rtc and /rtc/validate itself, and adding it
+      # here makes the client request /rtc/rtc, which 404s and hangs connect.
+      DEMO_PUBLIC_LIVEKIT_URL: wss://${PUBLIC_IP}
       DEMO_PASSCODE: ${DEMO_PASSCODE:?set DEMO_PASSCODE}
       DEMO_MAX_CALLS: ${DEMO_MAX_CALLS:-3}
       DEMO_CALL_SECONDS: ${DEMO_CALL_SECONDS:-300}
@@ -50,6 +53,9 @@ services:
       # Demo calls are recorded the same way local ones are, so you can listen
       # to what people actually said to it.
       - ./calls:/app/calls
+      # Serve the live web/ dir so the passcode page can be iterated without
+      # an image rebuild.
+      - ../../web:/app/web:ro
 
 volumes:
   caddy_data:

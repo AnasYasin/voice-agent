@@ -42,6 +42,8 @@
 
 <div id="status">Ready.</div>
 
+<p id="live" class="sub" aria-live="polite"></p>
+
 <script type="module">
 import {
   Room, RoomEvent, createLocalAudioTrack,
@@ -63,6 +65,22 @@ if (!window.isSecureContext || !navigator.mediaDevices) {
 passcode.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') button.click();
 });
+
+// Live call count, polled from the same /healthz the box uses. Best effort:
+// a failed poll just leaves the last line in place rather than showing an error.
+const live = document.getElementById('live');
+async function refreshLive() {
+  try {
+    const r = await fetch('/healthz', { cache: 'no-store' });
+    const { in_flight, busy } = await r.json();
+    const n = Number(in_flight) || 0;
+    live.textContent = n === 0
+      ? 'No one is on a call right now.'
+      : `${n} ${n === 1 ? 'person is' : 'people are'} on a call right now${busy ? ' — all lines full' : ''}.`;
+  } catch { /* keep the last known line */ }
+}
+refreshLive();
+setInterval(refreshLive, 4000);
 
 button.onclick = async () => {
   const code = passcode.value.trim();
@@ -115,6 +133,7 @@ button.onclick = async () => {
     // Browser mics default to 48 kHz with noise suppression and AGC. Those
     // clean up the audio in ways a real phone line never would, so leave the
     // signal alone and let the agent band-limit it.
+    //
     const mic = await createLocalAudioTrack({
       echoCancellation: true,
       noiseSuppression: false,
