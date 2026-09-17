@@ -262,6 +262,20 @@ def test_an_unfinished_call_reports_cut_off_with_the_slots_so_far(tmp_path: Path
     assert session.result.slots == {"confirmed": False}
 
 
+def test_turn_times_count_from_the_greeting_not_from_construction(tmp_path: Path) -> None:
+    """On a live call the agent sits in the room waiting for the caller. That
+    wait is not part of the call, and the recording does not include it either,
+    so the greeting has to be at zero for the two to line up."""
+    import time
+
+    session = make_session(tmp_path)
+    time.sleep(0.3)
+
+    session.start(**CALLER)
+
+    assert session.transcript[0].seconds_from_start < 0.25
+
+
 def test_turn_times_never_go_backwards(tmp_path: Path) -> None:
     session = make_session(tmp_path, hears=("جی ہاں",), extracts=(True,))
     session.start(**CALLER)

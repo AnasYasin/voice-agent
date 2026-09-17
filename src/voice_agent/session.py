@@ -194,10 +194,17 @@ class Session:
             json.dumps(self.record(), ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
+    def _begin(self, fields: dict[str, Any]) -> None:
+        """The call starts when the greeting does, which is when the recording
+        does. The session may have sat waiting for the caller before this."""
+        self._fields = fields
+        self.started_at = datetime.now().astimezone()
+        self._clock_start = time.monotonic()
+
     def start(self, **fields: Any) -> Reply:
         """Open the call. `fields` fill the script placeholders."""
         log.info("call starting in %s", self.language.locale)
-        self._fields = fields
+        self._begin(fields)
         return self._speak(self.flow.start(**fields))
 
     def hear(self, recording: Path | None = None, key: str = "") -> Reply:
@@ -302,7 +309,7 @@ class Session:
     def greet(self, **fields: Any) -> Speaking:
         """Open the call. `fields` fill the script placeholders."""
         log.info("call starting in %s", self.language.locale)
-        self._fields = fields
+        self._begin(fields)
         return self._speaking(self.flow.start(**fields))
 
     async def answer(self, key: str = "") -> Speaking:
