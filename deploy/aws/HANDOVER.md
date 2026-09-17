@@ -34,13 +34,25 @@ every variable. `PUBLIC_IP=13.203.35.195` is now in `.env` too (see bug 2).
 
 ## Current state
 
-All three containers run under `docker compose` in `deploy/aws`:
+All four containers run under `docker compose` in `deploy/aws`:
 
 | Service | What it does |
 |---|---|
 | `caddy` | TLS on 443, redirect on 80, `/rtc*` and `/validate*` to LiveKit, everything else to the demo app |
 | `livekit` | media + signalling, embedded TURN on 3478/UDP and 5349/TLS |
-| `demo` | the agent, `main.py --serve`, on 8080 |
+| `postgres` | every call's transcript, on 127.0.0.1:5432 only, data in the `pgdata` volume |
+| `demo` | the agent, `main.py --serve`, on 8080. Refuses to start without Postgres |
+
+`.env` on the box carries `DATABASE_URL` and `POSTGRES_PASSWORD` with the same
+password. Read a call back with:
+
+```bash
+docker compose --env-file ../../.env exec postgres psql -U agent -d voice_agent \
+  -c "select call_id, caller_id, outcome, started_at from calls order by started_at desc limit 10"
+```
+
+Demo callers are stored under a `visitor-xxxxxxxx` caller id minted with their
+token, so the calls table tells the demo visitors apart.
 
 Verified from the public internet:
 
@@ -113,6 +125,7 @@ export PUBLIC_IP=13.203.35.195
 
 docker compose --env-file ../../.env up -d caddy   # port 80 for the challenge
 ./setup.sh                                         # cert + render livekit config
+docker compose --env-file ../../.env up -d postgres
 docker compose --env-file ../../.env up -d --build # build the image, start all
 
 curl -k https://$PUBLIC_IP/healthz

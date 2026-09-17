@@ -14,8 +14,17 @@ pip install -e .          # else: ModuleNotFoundError: voice_agent
 ## 1. Tests
 
 ```bash
-pytest -m "not live"   # 216 tests, no keys, no network
-pytest -m live         # 33 tests, real APIs, fraction of a cent
+docker compose up -d postgres   # the store tests and the agent both need it
+pytest -m "not live"            # 222 tests, no keys, no network
+pytest -m live                  # 42 tests, real APIs and Postgres, fraction of a cent
+```
+
+One live test runs the whole agent with no microphone: the caller is synthesised
+in the male voice, the recognizer hears it, Claude fills the slot, and the call
+is saved to Postgres and read back.
+
+```bash
+pytest -m live -s -k real_call_lands   # heard: جی ہاں ٹھیک ہے / outcome: done
 ```
 
 Green means the pipeline is wired right. It does not mean Urdu recognition is
@@ -49,15 +58,19 @@ Three terminals.
 
 ```bash
 # 1
-docker compose up -d livekit
+docker compose up -d livekit postgres
 
 # 2
 python -m http.server 8081 --directory web
 
 # 3
 conda activate voice-agent && cd ~/projects/voice_agents/urdu_voice_agent
-python -m voice_agent.main --name انس --date کل --time چار
+python -m voice_agent.main --phone 03001234567 --name انس --date کل --time چار
 ```
+
+`--phone` is the caller id the call is stored under. Terminal 3 exits with
+`cannot reach Postgres` if terminal 1 did not start it. That is deliberate: a
+call nobody can look up later did not happen.
 
 Terminal 3 prints a **caller token** and waits. Open
 <http://localhost:8081/dev.html>, paste it, Connect, allow the mic.
@@ -66,6 +79,17 @@ That page exists for this flow. The demo server in section 4 mints its own. The 
 Outcome and slots print in terminal 3. Audio lands under `calls/`: one WAV per
 line the agent said, and one `caller.wav` for the whole call, because the
 recognizer stays open and the caller's audio never stops to become a file.
+`transcript.json` sits next to them and is rewritten after every turn, so it is
+there even if the process dies mid-call.
+
+The same transcript is in Postgres once the call ends:
+
+```bash
+make calls     # the last ten calls
+make db        # psql. Then, for one caller:
+#   select * from calls where caller_id = '03001234567' order by started_at desc;
+#   select turn, heard, said from turns where call_id = '<call_id>' order by turn;
+```
 
 The agent should start talking about a second and a half after you stop, and
 should stop talking the moment you start. See `STREAMING.md` for where that
@@ -130,6 +154,7 @@ The old paste-a-token client is still there for `make run`, at
 | Agent never hears you | An expired token from an earlier run. Each run prints a new one |
 | Never hears you | Mic permission, or you connected before terminal 3 said `waiting` |
 | `cannot reach LiveKit` | Terminal 1 not running |
+| `cannot reach Postgres` | `docker compose up -d postgres`, or `DATABASE_URL` in `.env` is wrong |
 | `ModuleNotFoundError` | Skipped `pip install -e .`, or env not active |
 | Answers the wrong thing | Prompt tuning, deliberately deferred |
 

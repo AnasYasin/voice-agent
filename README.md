@@ -15,7 +15,7 @@ browser. See [TESTING.md](TESTING.md) to run it.
 | STT | ElevenLabs Scribe, compared against Deepgram Nova-3 |
 | TTS | Azure Neural `ur-PK-UzmaNeural`, fixed lines cached |
 | LLM | Claude Sonnet 5, slot extraction only |
-| Storage | Postgres + S3 (not built yet) |
+| Storage | Postgres for every call's transcript, searchable. S3 for recordings next |
 
 The binding constraint is a Pakistani local caller ID, not AI quality. Managed
 platforms cannot provide one, and calls from outside Pakistan pay international
@@ -57,7 +57,8 @@ src/voice_agent/
   llm.py        claude slot extraction + streamed prose
   tts.py        azure voice + cache, whole files and chunks
   flow.py       state machine over script.yaml
-  session.py    wires one call, transport-agnostic
+  session.py    wires one call, transport-agnostic, writes transcript.json per turn
+  store.py      one call and its turns into postgres, full-text indexed
   transport.py  livekit browser (SIP and PSTN later)
   main.py       process startup, the only module reading env
   lang/ur/      normalisation, keyterms, sentence ends, call script
@@ -77,8 +78,25 @@ That is 4.1 seconds a turn down to about 1.8. See [STREAMING.md](STREAMING.md).
 The campaign path is unchanged and still file-based, because a fixed script
 line is a cached WAV with nothing to wait for.
 
+## Calls in Postgres
+
+Every call is one row in `calls` and one row per turn in `turns`, written once
+when the call ends. Nothing touches the database while a caller is waiting.
+The caller id is the phone number on a campaign call and a per-visitor
+identity on the demo, so one person's calls can be pulled together either way.
+Turn text carries a full-text index, so `make db` then
+
+```sql
+select * from turns where search @@ websearch_to_tsquery('simple', 'چار بجے');
+```
+
+finds every turn where those words were said. The `simple` config splits on
+whitespace and lowercases, which is right for Urdu, Roman Urdu and English in
+the same sentence, and needs nothing per language. The language of each call
+is on its row.
+
 ## Not built
 
-SIP and PSTN transports, Postgres and S3 stores, answering machine detection,
-lead import and the dialer. Prompt tuning, transcripts and appointment handling
-are deliberately deferred until the architecture is finished.
+SIP and PSTN transports, the S3 recording store, answering machine detection,
+lead import and the dialer. Prompt tuning and appointment handling are
+deliberately deferred until the architecture is finished.

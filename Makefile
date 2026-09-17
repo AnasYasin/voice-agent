@@ -5,7 +5,7 @@
 #   conda activate voice-agent && python -m ensurepip --upgrade
 #   make install
 
-.PHONY: install test test-live lint prep eval roundtrip run talk serve web livekit fmt clean
+.PHONY: install test test-live lint prep eval roundtrip run talk serve web livekit db calls fmt clean
 
 install:                   ## Install everything in requirements.txt
 	python -m pip install -r requirements.txt
@@ -29,8 +29,15 @@ eval:                      ## Score STT providers on prepared samples
 roundtrip:                 ## Azure TTS -> 8 kHz -> STT. Plumbing test, not the gate
 	python scripts/roundtrip.py
 
-livekit:                   ## Start the LiveKit server
-	docker compose up -d livekit
+livekit:                   ## Start LiveKit and Postgres. A call needs both
+	docker compose up -d livekit postgres
+
+db:                        ## A psql shell into the call transcripts
+	docker compose exec postgres psql -U agent -d voice_agent
+
+calls:                     ## The last ten calls, newest first
+	docker compose exec postgres psql -U agent -d voice_agent -c \
+	  "select call_id, caller_id, outcome, started_at from calls order by started_at desc limit 10"
 
 web:                       ## Dev client on :8081 for `make run`. The demo is `make serve`.
 	python -m http.server 8081 --directory web  # then open /dev.html

@@ -1,10 +1,25 @@
 # The demo, on one EC2 box.
 #
-# Three services. Caddy holds the certificate and fronts everything, LiveKit
-# carries the media, and the agent is the thing people are actually talking to.
+# Four services. Caddy holds the certificate and fronts everything, LiveKit
+# carries the media, Postgres keeps every call's transcript, and the agent is
+# the thing people are actually talking to.
 #
-# Run from this directory:  docker compose up -d
+# Run from this directory:  docker compose --env-file ../../.env up -d
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    # Bound to loopback. The demo reaches it on 127.0.0.1 over host networking
+    # and nothing outside the box can.
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD, the same one DATABASE_URL carries}
+      POSTGRES_DB: voice_agent
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -36,7 +51,8 @@ services:
     restart: unless-stopped        # a native crash in Silero must not end the demo
     command: python -m voice_agent.main --serve --verbose
     network_mode: host
-    env_file: ../../.env
+    depends_on: [postgres]         # it refuses to start without a database
+    env_file: ../../.env           # DATABASE_URL comes from here
     environment:
       # The agent talks to LiveKit on the same box, unencrypted, never leaving it.
       LIVEKIT_URL: ws://127.0.0.1:7880
@@ -59,3 +75,4 @@ services:
 
 volumes:
   caddy_data:
+  pgdata:

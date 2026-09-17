@@ -201,7 +201,6 @@ def test_the_reply_carries_the_keypad_options(tmp_path: Path) -> None:
 
 
 def test_the_transcript_records_both_sides(tmp_path: Path) -> None:
-    """Kept in memory for now. Persisting it is store.py's job."""
     session = make_session(tmp_path, hears=("جی ہاں",), extracts=(True,))
     session.start(**CALLER)
     session.hear(make_wav(tmp_path / "a.wav"))
@@ -210,6 +209,66 @@ def test_the_transcript_records_both_sides(tmp_path: Path) -> None:
     assert session.transcript[0].heard == ""
     assert session.transcript[1].heard == "جی ہاں"
     assert session.transcript[1].state == "done"
+
+
+def test_the_transcript_is_on_disk_after_every_turn(tmp_path: Path) -> None:
+    """A call that dies mid-sentence still leaves what was said so far."""
+    import json
+
+    session = make_session(tmp_path, hears=("جی ہاں",), extracts=(True,))
+    session.start(**CALLER)
+    after_greeting = json.loads((session.work_dir / "transcript.json").read_text("utf-8"))
+
+    session.hear(make_wav(tmp_path / "a.wav"))
+    after_reply = json.loads((session.work_dir / "transcript.json").read_text("utf-8"))
+
+    assert len(after_greeting["turns"]) == 1
+    assert after_greeting["outcome"] == "cut_off"
+    assert len(after_reply["turns"]) == 2
+    assert after_reply["outcome"] == "done"
+    assert after_reply["turns"][1]["heard"] == "جی ہاں"
+
+
+def test_the_record_carries_who_and_when(tmp_path: Path) -> None:
+    session = Session(
+        language=load_language("ur-PK"),
+        stt=FakeSTT(),
+        tts=FakeTTS(tmp_path),
+        extractor=FakeExtractor(),
+        work_dir=tmp_path / "call",
+        caller_id="03001234567",
+    )
+    session.start(**CALLER)
+
+    record = session.record()
+
+    assert record["call_id"] == "call"
+    assert record["caller_id"] == "03001234567"
+    assert record["language"] == "ur-PK"
+    assert record["fields"] == CALLER
+    assert record["audio_dir"] == str(tmp_path / "call")
+    assert record["started_at"] <= record["ended_at"]
+    assert record["turns"][0]["seconds_from_start"] >= 0
+
+
+def test_an_unfinished_call_reports_cut_off_with_the_slots_so_far(tmp_path: Path) -> None:
+    """The caller dropped the line. Whatever they confirmed before that is kept."""
+    session = make_session(tmp_path, hears=("نہیں",), extracts=(False,))
+    session.start(**CALLER)
+    session.hear(make_wav(tmp_path / "a.wav"))
+
+    assert not session.finished
+    assert session.result.outcome == "cut_off"
+    assert session.result.slots == {"confirmed": False}
+
+
+def test_turn_times_never_go_backwards(tmp_path: Path) -> None:
+    session = make_session(tmp_path, hears=("جی ہاں",), extracts=(True,))
+    session.start(**CALLER)
+    session.hear(make_wav(tmp_path / "a.wav"))
+
+    first, second = (exchange.seconds_from_start for exchange in session.transcript)
+    assert first <= second
 
 
 def test_audio_files_do_not_overwrite_each_other(tmp_path: Path) -> None:

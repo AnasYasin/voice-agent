@@ -48,5 +48,8 @@ livekit-plugins-silero>=1.6
 # --- component 5: tts client ---
 azure-cognitiveservices-speech>=1.40
 
+# --- component 7: call transcripts in postgres ---
+asyncpg>=0.30
+
 # --- scripts/roundtrip.py: word error rate for the plumbing test ---
 jiwer>=3.0

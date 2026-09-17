@@ -24,8 +24,12 @@ The agent reaches LiveKit on the internal address and the browser reaches it on
 the public one, which is why `public_url` is handed in separately. Inside a
 compose network those really are different hosts.
 
+Every visitor gets an identity of their own, minted with their token. It is the
+caller id on their call, which is what lets one person's calls be found again
+in Postgres before there is a phone number to find them by.
+
 Nothing here reads the environment. `main.py` builds this and runs it, the same
-way it builds the session and the transport.
+way it builds the session, the transport and the store.
 """
 
 from __future__ import annotations
@@ -41,7 +45,8 @@ from typing import Any
 
 from aiohttp import web
 
-from voice_agent.main import build_session, build_transport, save_transcript
+from voice_agent.main import build_session, build_transport, save_call
+from voice_agent.store import Store
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +64,7 @@ class Demo:
         self,
         passcode: str,
         public_url: str,
+        store: Store,
         max_calls: int = 3,
         call_seconds: int = 300,
     ) -> None:
@@ -70,6 +76,7 @@ class Demo:
 
         self.passcode = passcode
         self.public_url = public_url
+        self.store = store
         self.max_calls = max_calls
         self.call_seconds = call_seconds
         self.calls: set[asyncio.Task] = set()
@@ -91,9 +98,10 @@ class Demo:
         exist yet.
         """
         call_id = f"{datetime.now():%Y-%m-%d_%H-%M-%S}_{uuid.uuid4().hex[:6]}"
-        session = build_session(call_id, talk=True)
+        caller_id = f"visitor-{uuid.uuid4().hex[:8]}"
+        session = build_session(call_id, caller_id, talk=True)
         transport = build_transport(call_id)
-        token = transport.caller_token()
+        token = transport.caller_token(caller_id)
 
         task = asyncio.create_task(self._run(session, transport, call_id))
         self.calls.add(task)
@@ -108,10 +116,12 @@ class Demo:
         Every failure is caught and logged. One visitor hitting a bad line must
         not take down the server for the next one, and on a shared link there is
         nobody watching a terminal to notice that it did.
+
+        The call is saved however it ended. A visitor who closed the tab
+        mid-sentence still said things worth reading back.
         """
         try:
             result = await asyncio.wait_for(transport.run(session), timeout=self.call_seconds)
-            save_transcript(session, result, {})
             log.info("call %s ended: %s", call_id, result.outcome)
         except TimeoutError:
             log.info("call %s hit the %ds limit", call_id, self.call_seconds)
@@ -120,6 +130,9 @@ class Demo:
             raise
         except Exception:
             log.exception("call %s failed", call_id)
+        finally:
+            if session.transcript:
+                await save_call(session, self.store)
 
     async def stop(self) -> None:
         """Hang up on everyone. Only used when the process is going down."""

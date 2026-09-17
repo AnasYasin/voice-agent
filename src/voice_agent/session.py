@@ -40,17 +40,22 @@ the call smarter, it stops the caller waiting for four stages in a row.
 
 Audio for the call lands in `work_dir`: one WAV per line the agent said, and on
 a live call one continuous `caller.wav`, because a caller streaming into an
-open recognizer never produces a file per turn. Nothing is persisted beyond
-that; that is store.py's job, later.
+open recognizer never produces a file per turn. `transcript.json` sits next to
+them and is rewritten after every exchange, so a call that dies mid-sentence
+still leaves its transcript on disk. Postgres gets the same record once, at the
+end; that is store.py.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import time
 from collections.abc import AsyncIterable, AsyncIterator
 from contextlib import aclosing, suppress
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -70,6 +75,7 @@ class Exchange:
     state: str
     heard: str
     said: str
+    seconds_from_start: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -112,11 +118,16 @@ class Session:
         work_dir: Path,
         responder: Any = None,
         conversation: bool = False,
+        caller_id: str = "",
     ) -> None:
         self.language = language
         self.stt = stt
         self.tts = tts
         self.work_dir = work_dir
+        self.caller_id = caller_id
+        self.started_at = datetime.now().astimezone()
+        self._clock_start = time.monotonic()
+        self._fields: dict[str, Any] = {}
         # Talk mode swaps the engine, not the plumbing. Everything below this
         # line, and every transport above it, is unchanged either way.
         self.flow: Any
@@ -141,11 +152,52 @@ class Session:
 
     @property
     def result(self) -> Result:
-        return self.flow.result
+        """The outcome so far. A call that ended before the script did is `cut_off`
+        with whatever slots were filled by then."""
+        if self.finished:
+            return self.flow.result
+        return Result(outcome="cut_off", slots=dict(self.flow.slots))
+
+    def record(self) -> dict[str, Any]:
+        """Everything known about the call, in the shape the JSON file and the
+        store both take. Valid mid-call, so it can be written after every turn."""
+        result = self.result
+        return {
+            "call_id": self.work_dir.name,
+            "caller_id": self.caller_id,
+            "language": self.language.locale,
+            "started_at": self.started_at.isoformat(timespec="seconds"),
+            "ended_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "fields": self._fields,
+            "outcome": result.outcome,
+            "slots": result.slots,
+            "audio_dir": str(self.work_dir),
+            "turns": [
+                {
+                    "turn": number,
+                    "state": exchange.state,
+                    "seconds_from_start": exchange.seconds_from_start,
+                    "heard": exchange.heard,
+                    "said": exchange.said,
+                }
+                for number, exchange in enumerate(self.transcript, start=1)
+            ],
+        }
+
+    def _note(self, state: str, heard: str, said: str) -> None:
+        """One exchange into the transcript, and the transcript onto disk."""
+        elapsed = round(time.monotonic() - self._clock_start, 2)
+        self.transcript.append(
+            Exchange(state=state, heard=heard, said=said, seconds_from_start=elapsed)
+        )
+        (self.work_dir / "transcript.json").write_text(
+            json.dumps(self.record(), ensure_ascii=False, indent=2), encoding="utf-8"
+        )
 
     def start(self, **fields: Any) -> Reply:
         """Open the call. `fields` fill the script placeholders."""
         log.info("call starting in %s", self.language.locale)
+        self._fields = fields
         return self._speak(self.flow.start(**fields))
 
     def hear(self, recording: Path | None = None, key: str = "") -> Reply:
@@ -175,7 +227,7 @@ class Session:
     def _speak(self, turn: Turn, heard: str = "") -> Reply:
         """Flow text to audio the transport can play."""
         self._turns += 1
-        self.transcript.append(Exchange(state=turn.state, heard=heard, said=turn.say))
+        self._note(turn.state, heard, turn.say)
 
         # Nothing to say means say nothing. Synthesising an empty string would
         # cost an API call to produce a WAV of silence, and the transport would
@@ -250,6 +302,7 @@ class Session:
     def greet(self, **fields: Any) -> Speaking:
         """Open the call. `fields` fill the script placeholders."""
         log.info("call starting in %s", self.language.locale)
+        self._fields = fields
         return self._speaking(self.flow.start(**fields))
 
     async def answer(self, key: str = "") -> Speaking:
@@ -328,7 +381,7 @@ class Session:
                 # tell it what the caller actually heard.
                 self.flow.spoken(" ".join(said))
         finally:
-            self.transcript.append(Exchange(state=turn.state, heard=heard, said=" ".join(said)))
+            self._note(turn.state, heard, " ".join(said))
 
     async def _fill(self, turn: Turn, queue: asyncio.Queue) -> None:
         """Sentences to audio, as far ahead as the queue allows.

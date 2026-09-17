@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -19,6 +20,37 @@ from aiohttp.test_utils import TestClient, TestServer
 from voice_agent.demo import Demo, build_app
 
 CODE = "open-sesame"
+
+
+class FakeStore:
+    """Remembers what it was asked to save. No database."""
+
+    def __init__(self) -> None:
+        self.saved: list[dict[str, Any]] = []
+
+    async def save(self, record: dict[str, Any]) -> None:
+        self.saved.append(record)
+
+
+class FakeSession:
+    """Just enough of a Session for `save_call`: a transcript and a record."""
+
+    def __init__(self, work_dir: Path, turns: int) -> None:
+        self.work_dir = work_dir
+        self.transcript = ["turn"] * turns
+        work_dir.mkdir(parents=True, exist_ok=True)
+
+    def record(self) -> dict[str, Any]:
+        return {
+            "call_id": self.work_dir.name,
+            "caller_id": "visitor-abc12345",
+            "started_at": "2026-09-18T12:00:00+05:00",
+            "outcome": "cut_off",
+            "slots": {},
+            "turns": [
+                {"state": "talk", "heard": "", "said": "السلام علیکم"} for _ in self.transcript
+            ],
+        }
 
 
 class Recording(Demo):
@@ -40,6 +72,7 @@ def make_demo(**kwargs: Any) -> Recording:
     settings: dict[str, Any] = {
         "passcode": CODE,
         "public_url": "wss://example/rtc",
+        "store": FakeStore(),
         "max_calls": 2,
     }
     settings.update(kwargs)
@@ -55,7 +88,7 @@ async def serving(demo: Demo) -> Any:
 def test_a_demo_without_a_passcode_refuses_to_start() -> None:
     """An empty code is not an open demo, it is a mistake that costs money."""
     with pytest.raises(ValueError, match="DEMO_PASSCODE"):
-        Demo(passcode="", public_url="wss://example/rtc")
+        Demo(passcode="", public_url="wss://example/rtc", store=FakeStore())
 
 
 async def test_the_wrong_code_gets_no_token() -> None:
@@ -143,31 +176,57 @@ async def test_the_page_is_served_without_a_code() -> None:
     assert "Caller token" not in body
 
 
-async def test_a_call_that_dies_does_not_take_the_server_with_it() -> None:
+class Exploding:
+    async def run(self, session: Any, **fields: Any) -> Any:
+        raise RuntimeError("bad line")
+
+
+class NeverEnds:
+    async def run(self, session: Any, **fields: Any) -> Any:
+        await asyncio.sleep(3600)
+
+
+async def test_a_call_that_dies_does_not_take_the_server_with_it(tmp_path: Path) -> None:
     """On a shared link nobody is watching a terminal to notice it went down."""
-    demo = Demo(passcode="x", public_url="wss://example/rtc")
+    demo = Demo(passcode="x", public_url="wss://example/rtc", store=FakeStore())
 
-    class Exploding:
-        async def run(self, session: Any, **fields: Any) -> Any:
-            raise RuntimeError("bad line")
-
-    await demo._run(session=None, transport=Exploding(), call_id="boom")
+    await demo._run(FakeSession(tmp_path / "boom", turns=0), Exploding(), call_id="boom")
 
     assert demo.calls == set()
 
 
-async def test_a_caller_who_never_hangs_up_is_cut_off() -> None:
+async def test_a_caller_who_never_hangs_up_is_cut_off(tmp_path: Path) -> None:
     """A demo caller closes the tab instead of saying goodbye, so the deadline
     is what actually ends most of these."""
-    demo = Demo(passcode="x", public_url="wss://example/rtc", call_seconds=0)
+    store = FakeStore()
+    demo = Demo(passcode="x", public_url="wss://example/rtc", store=store, call_seconds=0)
 
-    class NeverEnds:
-        async def run(self, session: Any, **fields: Any) -> Any:
-            await asyncio.sleep(3600)
-
-    await demo._run(session=None, transport=NeverEnds(), call_id="forever")
+    await demo._run(FakeSession(tmp_path / "forever", turns=3), NeverEnds(), call_id="forever")
 
     assert demo.calls == set()
+    assert [record["call_id"] for record in store.saved] == ["forever"]
+    assert (tmp_path / "forever" / "transcript.txt").exists()
+
+
+async def test_a_call_that_failed_mid_way_is_still_saved(tmp_path: Path) -> None:
+    """Three turns happened before the bad line. They are the record."""
+    store = FakeStore()
+    demo = Demo(passcode="x", public_url="wss://example/rtc", store=store)
+
+    await demo._run(FakeSession(tmp_path / "boom", turns=3), Exploding(), call_id="boom")
+
+    assert len(store.saved) == 1
+    assert store.saved[0]["caller_id"] == "visitor-abc12345"
+
+
+async def test_a_call_nobody_spoke_on_is_not_saved(tmp_path: Path) -> None:
+    """A visitor who got a token and never connected did not make a call."""
+    store = FakeStore()
+    demo = Demo(passcode="x", public_url="wss://example/rtc", store=store, call_seconds=0)
+
+    await demo._run(FakeSession(tmp_path / "ghost", turns=0), NeverEnds(), call_id="ghost")
+
+    assert store.saved == []
 
 
 def test_the_app_exposes_only_what_it_means_to() -> None:

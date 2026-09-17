@@ -26,7 +26,7 @@ from livekit.rtc.room import ConnectError
 
 from voice_agent import language as language_module
 from voice_agent import llm, stt, tts
-from voice_agent.flow import Result
+from voice_agent import store as store_module
 from voice_agent.logging_setup import setup_logging
 from voice_agent.session import Session
 from voice_agent.transport import BrowserTransport
@@ -45,7 +45,7 @@ def require(name: str) -> str:
     return value
 
 
-def build_session(call_id: str, chat: bool = False, talk: bool = False) -> Session:
+def build_session(call_id: str, caller_id: str, chat: bool = False, talk: bool = False) -> Session:
     """Wire one call. Every provider is chosen here and nowhere else."""
     language = language_module.load()
 
@@ -66,7 +66,19 @@ def build_session(call_id: str, chat: bool = False, talk: bool = False) -> Sessi
         work_dir=CALLS_DIR / call_id,
         responder=llm.build_responder(require("ANTHROPIC_API_KEY")) if chat or talk else None,
         conversation=talk,
+        caller_id=caller_id,
     )
+
+
+async def connect_store() -> store_module.Store:
+    """Postgres, or a clear exit. A call nobody can look up later did not happen."""
+    try:
+        return await store_module.connect(require("DATABASE_URL"))
+    except store_module.ConnectionFailed as error:
+        raise SystemExit(
+            f"cannot reach Postgres at DATABASE_URL: {error}\n"
+            "Start it with:  docker compose up -d postgres"
+        ) from None
 
 
 def build_transport(call_id: str) -> BrowserTransport:
@@ -83,9 +95,14 @@ def build_transport(call_id: str) -> BrowserTransport:
 
 
 async def run_once(
-    call_id: str, fields: dict[str, str], chat: bool = False, talk: bool = False
+    call_id: str,
+    caller_id: str,
+    fields: dict[str, str],
+    chat: bool = False,
+    talk: bool = False,
 ) -> None:
-    session = build_session(call_id, chat=chat, talk=talk)
+    store = await connect_store()
+    session = build_session(call_id, caller_id, chat=chat, talk=talk)
     transport = build_transport(call_id)
 
     print(f"\n  room    {transport.room_name}")
@@ -93,7 +110,7 @@ async def run_once(
     print("  Join that room in a browser, then speak.\n")
 
     try:
-        result = await transport.run(session, **fields)
+        await transport.run(session, **fields)
     except ConnectError:
         # The usual cause is nobody started the server. The raw error is
         # 'IO error: Connection refused', which says nothing useful.
@@ -101,46 +118,46 @@ async def run_once(
             f"cannot reach LiveKit at {transport.url}.\n"
             "Start it with:  docker compose up -d livekit"
         ) from None
+    finally:
+        # Whatever ended the call, a call with turns in it is a call to keep.
+        if session.transcript:
+            await save_call(session, store)
+        await store.close()
 
-    save_transcript(session, result, fields)
-
+    result = session.result
     print(f"\n  outcome  {result.outcome}")
     for slot, value in result.slots.items():
         print(f"  {slot:<20} {value}")
     print(f"\n  audio in {session.work_dir}\n")
 
 
-def save_transcript(session: Session, result: Result, fields: dict[str, str]) -> None:
-    """What was said, next to the audio that carried it.
+async def save_call(session: Session, store: store_module.Store) -> None:
+    """The finished call to disk and to Postgres.
 
-    Two files on purpose. The JSON is for scoring runs later, the text is for
-    reading a call back without a tool.
+    The JSON was already there, rewritten after every turn. This writes it a
+    last time with the outcome, renders the text version for reading a call
+    back without a tool, then hands the same record to the store.
     """
-    record = {
-        "call_id": session.work_dir.name,
-        "recorded_at": datetime.now().isoformat(timespec="seconds"),
-        "fields": fields,
-        "outcome": result.outcome,
-        "slots": result.slots,
-        "turns": [
-            {"n": n, "state": turn.state, "heard": turn.heard, "said": turn.said}
-            for n, turn in enumerate(session.transcript, start=1)
-        ],
-    }
+    record = session.record()
     (session.work_dir / "transcript.json").write_text(
         json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
-    lines = [f"call {record['call_id']}  ({record['recorded_at']})", ""]
+    lines = [
+        f"call {record['call_id']}  ({record['started_at']})  caller {record['caller_id']}",
+        "",
+    ]
     for turn in record["turns"]:
         lines.append(f"[{turn['state']}]")
         lines.append(f"  agent   {turn['said']}")
         if turn["heard"]:
             lines.append(f"  caller  {turn['heard']}")
         lines.append("")
-    lines.append(f"outcome  {result.outcome}")
-    lines += [f"{slot:<20} {value}" for slot, value in result.slots.items()]
+    lines.append(f"outcome  {record['outcome']}")
+    lines += [f"{slot:<20} {value}" for slot, value in record["slots"].items()]
     (session.work_dir / "transcript.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    await store.save(record)
 
 
 async def serve() -> None:
@@ -154,11 +171,13 @@ async def serve() -> None:
 
     from voice_agent import demo as demo_module
 
+    store = await connect_store()
     server = demo_module.Demo(
         passcode=require("DEMO_PASSCODE"),
         # What the browser dials, which is not what the agent dials. Behind a
         # proxy these are genuinely different hosts.
         public_url=os.getenv("DEMO_PUBLIC_LIVEKIT_URL", "ws://localhost:7880"),
+        store=store,
         max_calls=int(os.getenv("DEMO_MAX_CALLS", "3")),
         call_seconds=int(os.getenv("DEMO_CALL_SECONDS", "300")),
     )
@@ -178,7 +197,8 @@ async def serve() -> None:
     try:
         await asyncio.Event().wait()  # until someone stops the process
     finally:
-        await runner.cleanup()
+        await runner.cleanup()  # hangs up on everyone, which saves their calls
+        await store.close()
 
 
 def main() -> None:
@@ -188,6 +208,11 @@ def main() -> None:
     parser.add_argument("--name", default="", help="who we are calling")
     parser.add_argument("--date", default="", help="appointment day, as it should be spoken")
     parser.add_argument("--time", default="", help="appointment time, as it should be spoken")
+    parser.add_argument(
+        "--phone",
+        default="",
+        help="the number being called. Stored as the caller id so the call can be looked up",
+    )
     parser.add_argument(
         "--call-id",
         default=datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
@@ -221,6 +246,7 @@ def main() -> None:
     asyncio.run(
         run_once(
             args.call_id,
+            args.phone,
             {"name": args.name, "date": args.date, "time": args.time},
             chat=args.chat,
             talk=args.talk,
