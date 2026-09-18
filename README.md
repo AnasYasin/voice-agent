@@ -62,7 +62,7 @@ src/voice_agent/
   transport.py  livekit browser (SIP and PSTN later)
   main.py       process startup, the only module reading env
   lang/ur/      Urdu: normalisation, keyterms, sentence ends, call script, persona
-  lang/en/      English, the same five files. AGENT_LANGUAGE=en-IN switches
+  lang/en/      English, the same five files. The demo page offers both
 web/            browser test client
 eval/           Phase 0 accuracy harness
 telephony/      Asterisk config

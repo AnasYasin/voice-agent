@@ -7,7 +7,14 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from voice_agent.flow import Script
-from voice_agent.language import LANGUAGE_ENV_VAR, Language, Normalizer, load
+from voice_agent.language import (
+    LANGUAGE_ENV_VAR,
+    Language,
+    Normalizer,
+    available,
+    default_locale,
+    load,
+)
 
 
 def test_loads_urdu_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -100,3 +107,15 @@ def test_language_is_the_only_thing_components_need() -> None:
 
 def test_language_type_is_exported() -> None:
     assert isinstance(load("ur-PK"), Language)
+
+
+def test_every_pack_on_disk_is_listed_with_its_name() -> None:
+    """This is what the language toggle shows. A new folder is a new button."""
+    assert available() == {"ur-PK": "اردو", "en-IN": "English"}
+
+
+def test_the_default_locale_follows_the_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(LANGUAGE_ENV_VAR, "en-IN")
+    assert default_locale() == "en-IN"
+    monkeypatch.delenv(LANGUAGE_ENV_VAR)
+    assert default_locale() == "ur-PK"

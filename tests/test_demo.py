@@ -20,6 +20,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from voice_agent.demo import Demo, build_app
 
 CODE = "open-sesame"
+LANGUAGES = {"languages": {"ur-PK": "اردو", "en-IN": "English"}, "default_language": "ur-PK"}
 
 
 class FakeStore:
@@ -74,9 +75,11 @@ class Recording(Demo):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.started = 0
+        self.locales: list[str] = []
 
-    async def start_call(self) -> tuple[str, str]:
+    async def start_call(self, locale: str) -> tuple[str, str]:
         self.started += 1
+        self.locales.append(locale)
         task = asyncio.create_task(asyncio.sleep(3600))
         self.calls.add(task)
         task.add_done_callback(self.calls.discard)
@@ -88,6 +91,7 @@ def make_demo(**kwargs: Any) -> Recording:
         "passcode": CODE,
         "public_url": "wss://example/rtc",
         "store": FakeStore(),
+        **LANGUAGES,
         "max_calls": 2,
     }
     settings.update(kwargs)
@@ -103,7 +107,7 @@ async def serving(demo: Demo) -> Any:
 def test_a_demo_without_a_passcode_refuses_to_start() -> None:
     """An empty code is not an open demo, it is a mistake that costs money."""
     with pytest.raises(ValueError, match="DEMO_PASSCODE"):
-        Demo(passcode="", public_url="wss://example/rtc", store=FakeStore())
+        Demo(passcode="", public_url="wss://example/rtc", store=FakeStore(), **LANGUAGES)
 
 
 async def test_the_wrong_code_gets_no_token() -> None:
@@ -137,6 +141,55 @@ async def test_the_right_code_gets_a_room_and_a_token() -> None:
     assert body["url"] == "wss://example/rtc"
     assert body["token"]
     assert demo.started == 1
+
+
+async def test_the_page_can_ask_which_languages_exist() -> None:
+    """One button per pack on disk, and which one starts selected."""
+    async with serving(make_demo()) as client:
+        body = await (await client.get("/api/languages")).json()
+
+    assert body == {
+        "languages": [{"locale": "ur-PK", "name": "اردو"}, {"locale": "en-IN", "name": "English"}],
+        "default": "ur-PK",
+    }
+
+
+async def test_the_chosen_language_reaches_the_call() -> None:
+    demo = make_demo()
+    async with serving(demo) as client:
+        response = await client.post("/api/session", json={"passcode": CODE, "language": "en-IN"})
+
+    assert response.status == 200
+    assert demo.locales == ["en-IN"]
+
+
+async def test_no_language_means_the_default_one() -> None:
+    demo = make_demo()
+    async with serving(demo) as client:
+        await client.post("/api/session", json={"passcode": CODE})
+
+    assert demo.locales == ["ur-PK"]
+
+
+async def test_an_unknown_language_is_refused_before_a_call_starts() -> None:
+    demo = make_demo()
+    async with serving(demo) as client:
+        response = await client.post("/api/session", json={"passcode": CODE, "language": "fr-FR"})
+
+    assert response.status == 400
+    assert demo.started == 0
+
+
+def test_a_default_language_without_a_pack_refuses_to_start() -> None:
+    """AGENT_LANGUAGE pointing at nothing would fail on the first caller instead."""
+    with pytest.raises(ValueError, match="no pack"):
+        Demo(
+            passcode="x",
+            public_url="wss://example/rtc",
+            store=FakeStore(),
+            languages={"ur-PK": "اردو"},
+            default_language="fr-FR",
+        )
 
 
 async def test_every_visitor_gets_their_own_token() -> None:
@@ -203,7 +256,7 @@ class NeverEnds:
 
 async def test_a_call_that_dies_does_not_take_the_server_with_it(tmp_path: Path) -> None:
     """On a shared link nobody is watching a terminal to notice it went down."""
-    demo = Demo(passcode="x", public_url="wss://example/rtc", store=FakeStore())
+    demo = Demo(passcode="x", public_url="wss://example/rtc", **LANGUAGES, store=FakeStore())
 
     await demo._run(FakeSession(tmp_path / "boom", turns=0), Exploding(), call_id="boom")
 
@@ -214,7 +267,9 @@ async def test_a_caller_who_never_hangs_up_is_cut_off(tmp_path: Path) -> None:
     """A demo caller closes the tab instead of saying goodbye, so the deadline
     is what actually ends most of these."""
     store = FakeStore()
-    demo = Demo(passcode="x", public_url="wss://example/rtc", store=store, call_seconds=0)
+    demo = Demo(
+        passcode="x", public_url="wss://example/rtc", **LANGUAGES, store=store, call_seconds=0
+    )
 
     await demo._run(FakeSession(tmp_path / "forever", turns=3), NeverEnds(), call_id="forever")
 
@@ -226,7 +281,7 @@ async def test_a_caller_who_never_hangs_up_is_cut_off(tmp_path: Path) -> None:
 async def test_a_call_that_failed_mid_way_is_still_saved(tmp_path: Path) -> None:
     """Three turns happened before the bad line. They are the record."""
     store = FakeStore()
-    demo = Demo(passcode="x", public_url="wss://example/rtc", store=store)
+    demo = Demo(passcode="x", public_url="wss://example/rtc", **LANGUAGES, store=store)
 
     await demo._run(FakeSession(tmp_path / "boom", turns=3), Exploding(), call_id="boom")
 
@@ -237,7 +292,9 @@ async def test_a_call_that_failed_mid_way_is_still_saved(tmp_path: Path) -> None
 async def test_a_call_nobody_spoke_on_is_not_saved(tmp_path: Path) -> None:
     """A visitor who got a token and never connected did not make a call."""
     store = FakeStore()
-    demo = Demo(passcode="x", public_url="wss://example/rtc", store=store, call_seconds=0)
+    demo = Demo(
+        passcode="x", public_url="wss://example/rtc", **LANGUAGES, store=store, call_seconds=0
+    )
 
     await demo._run(FakeSession(tmp_path / "ghost", turns=0), NeverEnds(), call_id="ghost")
 
@@ -251,13 +308,24 @@ def test_the_app_exposes_only_what_it_means_to() -> None:
 
     routes = {(r.method, r.resource.canonical) for r in app.router.routes() if r.method != "HEAD"}
 
-    assert routes == {("GET", "/"), ("GET", "/healthz"), ("POST", "/api/session")}
+    assert routes == {
+        ("GET", "/"),
+        ("GET", "/healthz"),
+        ("GET", "/api/languages"),
+        ("POST", "/api/session"),
+    }
 
 
 async def test_the_recording_is_uploaded_and_its_key_saved(tmp_path: Path) -> None:
     """The row points at the audio. Upload first, so the key exists to save."""
     store, recordings = FakeStore(), FakeRecordings()
-    demo = Demo(passcode="x", public_url="wss://example/rtc", store=store, recordings=recordings)
+    demo = Demo(
+        passcode="x",
+        public_url="wss://example/rtc",
+        **LANGUAGES,
+        store=store,
+        recordings=recordings,
+    )
 
     await demo._run(FakeSession(tmp_path / "taped", turns=2), Exploding(), call_id="taped")
 
@@ -267,7 +335,7 @@ async def test_the_recording_is_uploaded_and_its_key_saved(tmp_path: Path) -> No
 
 async def test_without_a_bucket_the_recording_stays_on_disk(tmp_path: Path) -> None:
     store = FakeStore()
-    demo = Demo(passcode="x", public_url="wss://example/rtc", store=store)
+    demo = Demo(passcode="x", public_url="wss://example/rtc", **LANGUAGES, store=store)
 
     await demo._run(FakeSession(tmp_path / "local", turns=2), Exploding(), call_id="local")
 

@@ -10,6 +10,7 @@ changing AGENT_LANGUAGE in .env is enough to switch.
 
     language = load()          # from AGENT_LANGUAGE
     language = load("ur-PK")   # or explicitly
+    available()                # {"ur-PK": "اردو", "en-IN": "English"}
 """
 
 from __future__ import annotations
@@ -31,6 +32,21 @@ LANGUAGE_ENV_VAR = "AGENT_LANGUAGE"
 DEFAULT_LANGUAGE = "ur-PK"
 SCRIPT_FILE = "script.yaml"
 AGENT_FILE = "agent.yaml"
+PACKS_DIR = Path(__file__).resolve().parent / "lang"
+
+
+def default_locale() -> str:
+    return os.getenv(LANGUAGE_ENV_VAR) or DEFAULT_LANGUAGE
+
+
+def available() -> dict[str, str]:
+    """Every language pack on disk, locale to display name. This is what a
+    language toggle shows, so adding a folder adds a button."""
+    packs = {}
+    for manifest_path in sorted(PACKS_DIR.glob("*/voice.py")):
+        manifest = importlib.import_module(f"voice_agent.lang.{manifest_path.parent.name}.voice")
+        packs[manifest.LOCALE] = manifest.NAME
+    return packs
 
 
 @runtime_checkable
@@ -63,7 +79,7 @@ def load(locale: str | None = None) -> Language:
     folder is per language and the locale only narrows the voice and script
     inside it.
     """
-    locale = locale or os.getenv(LANGUAGE_ENV_VAR) or DEFAULT_LANGUAGE
+    locale = locale or default_locale()
     code = locale.split("-")[0].lower()
 
     try:

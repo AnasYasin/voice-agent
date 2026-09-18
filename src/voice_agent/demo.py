@@ -28,6 +28,10 @@ Every visitor gets an identity of their own, minted with their token. It is the
 caller id on their call, which is what lets one person's calls be found again
 in Postgres before there is a phone number to find them by.
 
+The visitor also picks the language. The page asks `/api/languages` for the
+packs on disk, shows one button each, and sends the chosen locale when it
+starts the call, so two visitors can be on the line in two languages at once.
+
 Nothing here reads the environment. `main.py` builds this and runs it, the same
 way it builds the session, the transport and the store.
 """
@@ -65,6 +69,8 @@ class Demo:
         passcode: str,
         public_url: str,
         store: Store,
+        languages: dict[str, str],
+        default_language: str,
         recordings: Recordings | None = None,
         max_calls: int = 3,
         call_seconds: int = 300,
@@ -74,10 +80,14 @@ class Demo:
                 "DEMO_PASSCODE is empty. Refusing to start, because the link "
                 "would be open to anyone who found it, spending real money."
             )
+        if default_language not in languages:
+            raise ValueError(f"AGENT_LANGUAGE={default_language!r} has no pack under lang/")
 
         self.passcode = passcode
         self.public_url = public_url
         self.store = store
+        self.languages = languages
+        self.default_language = default_language
         self.recordings = recordings
         self.max_calls = max_calls
         self.call_seconds = call_seconds
@@ -92,7 +102,7 @@ class Demo:
         time by watching how long the answer takes to come back."""
         return hmac.compare_digest(given.strip(), self.passcode)
 
-    async def start_call(self) -> tuple[str, str]:
+    async def start_call(self, locale: str) -> tuple[str, str]:
         """A room of their own, with an agent already on its way into it.
 
         The agent is started before the token goes back, because a caller who
@@ -101,7 +111,7 @@ class Demo:
         """
         call_id = f"{datetime.now():%Y-%m-%d_%H-%M-%S}_{uuid.uuid4().hex[:6]}"
         caller_id = f"visitor-{uuid.uuid4().hex[:8]}"
-        session = build_session(call_id, caller_id, talk=True)
+        session = build_session(call_id, caller_id, locale, talk=True)
         transport = build_transport(call_id)
         token = transport.caller_token(caller_id)
 
@@ -109,7 +119,13 @@ class Demo:
         self.calls.add(task)
         task.add_done_callback(self.calls.discard)
 
-        log.info("call %s started, %d of %d in flight", call_id, len(self.calls), self.max_calls)
+        log.info(
+            "call %s started in %s, %d of %d in flight",
+            call_id,
+            locale,
+            len(self.calls),
+            self.max_calls,
+        )
         return self.public_url, token
 
     async def _run(self, session: Any, transport: Any, call_id: str) -> None:
@@ -155,8 +171,20 @@ async def healthz(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "in_flight": len(demo.calls), "busy": demo.busy})
 
 
+async def languages(request: web.Request) -> web.Response:
+    """What the toggle shows, default first, and which one starts selected."""
+    demo = request.app[DEMO]
+    ordered = sorted(demo.languages, key=lambda locale: locale != demo.default_language)
+    return web.json_response(
+        {
+            "languages": [{"locale": locale, "name": demo.languages[locale]} for locale in ordered],
+            "default": demo.default_language,
+        }
+    )
+
+
 async def start_session(request: web.Request) -> web.Response:
-    """Trade a passcode for a room and a token."""
+    """Trade a passcode and a language for a room and a token."""
     demo = request.app[DEMO]
 
     try:
@@ -169,13 +197,17 @@ async def start_session(request: web.Request) -> web.Response:
         # which half they got right is telling them how to guess the other.
         return web.json_response({"error": "That code is not right."}, status=403)
 
+    locale = str(body.get("language", demo.default_language))
+    if locale not in demo.languages:
+        return web.json_response({"error": f"No such language: {locale}."}, status=400)
+
     if demo.busy:
         return web.json_response(
             {"error": "The demo is busy right now. Try again in a minute."}, status=429
         )
 
     try:
-        url, token = await demo.start_call()
+        url, token = await demo.start_call(locale)
     except Exception:
         log.exception("could not start a call")
         return web.json_response({"error": "Could not start the call."}, status=500)
@@ -188,6 +220,7 @@ def build_app(demo: Demo) -> web.Application:
     app[DEMO] = demo
     app.router.add_get("/", index)
     app.router.add_get("/healthz", healthz)
+    app.router.add_get("/api/languages", languages)
     app.router.add_post("/api/session", start_session)
 
     async def hang_up_everyone(app: web.Application) -> None:

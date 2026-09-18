@@ -52,7 +52,8 @@ docker compose --env-file ../../.env exec postgres psql -U agent -d voice_agent 
 ```
 
 Demo callers are stored under a `visitor-xxxxxxxx` caller id minted with their
-token, so the calls table tells the demo visitors apart.
+token, so the calls table tells the demo visitors apart. The page has a
+language toggle, Urdu and English, and each call row says which one ran.
 
 ## Recordings
 

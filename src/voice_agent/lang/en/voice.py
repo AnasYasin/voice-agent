@@ -13,6 +13,7 @@ from voice_agent.lang.en.normalize import EnglishNormalizer
 # languages. en-US-JennyNeural is the cheaper Neural-tier alternative if the
 # HD voice ever matters on the bill.
 LOCALE = "en-IN"
+NAME = "English"  # what the caller sees on the language toggle
 STT_LANGUAGE = "en"
 TTS_VOICE = "en-IN-Neerja:DragonHDLatestNeural"
 

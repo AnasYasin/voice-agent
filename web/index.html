@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Urdu voice agent</title>
+<title>Voice agent</title>
 <style>
   :root { color-scheme: light dark; }
   body {
@@ -12,13 +12,25 @@
   }
   h1 { font-size: 1.35rem; margin-bottom: .25rem; }
   p.sub { margin-top: 0; opacity: .7; font-size: .9rem; }
-  label { display: block; margin: 1.75rem 0 .35rem; font-weight: 600; font-size: .85rem; }
+  label, .label { display: block; margin: 1.75rem 0 .35rem; font-weight: 600; font-size: .85rem; }
   input {
     width: 100%; padding: .7rem .8rem; font: inherit;
     border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
     border-radius: .4rem; background: transparent; color: inherit;
   }
-  button {
+  /* The language toggle. One segment per pack the server reports. */
+  #languages {
+    display: flex; gap: .35rem; padding: .3rem;
+    border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+    border-radius: .5rem;
+  }
+  #languages button {
+    flex: 1; margin: 0; padding: .6rem .8rem; font: inherit; font-weight: 600;
+    border: 0; border-radius: .35rem; cursor: pointer;
+    background: transparent; color: inherit;
+  }
+  #languages button[aria-pressed="true"] { background: #2563eb; color: #fff; }
+  #go {
     margin-top: 1.25rem; padding: .8rem 1.4rem; font: inherit; font-weight: 600;
     width: 100%; border: 0; border-radius: .4rem; cursor: pointer;
     background: #2563eb; color: #fff;
@@ -32,8 +44,11 @@
 </head>
 <body>
 
-<h1>Urdu voice agent</h1>
-<p class="sub">Enter the code, allow the microphone, and talk to it in Urdu.</p>
+<h1>Voice agent</h1>
+<p class="sub">Pick a language, enter the code, allow the microphone, and talk to it.</p>
+
+<span class="label" id="languages-label">Language</span>
+<div id="languages" role="group" aria-labelledby="languages-label"></div>
 
 <label for="passcode">Access code</label>
 <input id="passcode" type="password" autocomplete="off" inputmode="text" />
@@ -52,6 +67,7 @@ import {
 const status = document.getElementById('status');
 const button = document.getElementById('go');
 const passcode = document.getElementById('passcode');
+const toggle = document.getElementById('languages');
 const say = (text) => { status.textContent = text; };
 
 // The microphone needs a secure context. Say so plainly, because the failure
@@ -66,6 +82,40 @@ passcode.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') button.click();
 });
 
+// The languages come from the server, one button each, so a new pack under
+// lang/ shows up here without touching this page. The server also says which
+// one starts selected.
+let chosen = null;
+let chosenName = '';
+function pick(locale, name) {
+  chosen = locale;
+  chosenName = name;
+  for (const segment of toggle.children) {
+    segment.setAttribute('aria-pressed', String(segment.dataset.locale === locale));
+  }
+}
+async function loadLanguages() {
+  try {
+    const r = await fetch('/api/languages', { cache: 'no-store' });
+    const body = await r.json();
+    toggle.replaceChildren();
+    for (const { locale, name } of body.languages) {
+      const segment = document.createElement('button');
+      segment.type = 'button';
+      segment.textContent = name;
+      segment.dataset.locale = locale;
+      segment.onclick = () => pick(locale, name);
+      toggle.append(segment);
+    }
+    const first = body.languages.find((l) => l.locale === body.default) || body.languages[0];
+    pick(first.locale, first.name);
+  } catch {
+    say('Could not reach the server.');
+    button.disabled = true;
+  }
+}
+loadLanguages();
+
 // Live call count, polled from the same /healthz the box uses. Best effort:
 // a failed poll just leaves the last line in place rather than showing an error.
 const live = document.getElementById('live');
@@ -73,10 +123,10 @@ async function refreshLive() {
   try {
     const r = await fetch('/healthz', { cache: 'no-store' });
     const { in_flight, busy } = await r.json();
-    const n = Number(in_flight) || 0;
-    live.textContent = n === 0
+    const count = Number(in_flight) || 0;
+    live.textContent = count === 0
       ? 'No one is on a call right now.'
-      : `${n} ${n === 1 ? 'person is' : 'people are'} on a call right now${busy ? ' — all lines full' : ''}.`;
+      : `${count} ${count === 1 ? 'person is' : 'people are'} on a call right now${busy ? ' — all lines full' : ''}.`;
   } catch { /* keep the last known line */ }
 }
 refreshLive();
@@ -85,19 +135,21 @@ setInterval(refreshLive, 4000);
 button.onclick = async () => {
   const code = passcode.value.trim();
   if (!code) return say('Enter the access code first.');
+  if (!chosen) return say('Pick a language first.');
 
   button.disabled = true;
   say('Connecting…');
 
   // The token is fetched, never pasted. The server mints one per visitor and
-  // starts an agent for that room before answering, so the caller is not
-  // sitting in an empty room waiting for a process to be asked to exist.
+  // starts an agent for that room, in the chosen language, before answering,
+  // so the caller is not sitting in an empty room waiting for a process to be
+  // asked to exist.
   let url, token;
   try {
     const response = await fetch('/api/session', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ passcode: code }),
+      body: JSON.stringify({ passcode: code, language: chosen }),
     });
     const body = await response.json();
     if (!response.ok) {
@@ -119,7 +171,7 @@ button.onclick = async () => {
   room.on(RoomEvent.TrackSubscribed, (track) => {
     if (track.kind === 'audio') {
       track.attach().play?.();
-      say('Connected. The agent is speaking, answer in Urdu.');
+      say(`Connected. The agent is speaking, answer in ${chosenName}.`);
     }
   });
   room.on(RoomEvent.Disconnected, () => {
@@ -133,14 +185,13 @@ button.onclick = async () => {
     // Browser mics default to 48 kHz with noise suppression and AGC. Those
     // clean up the audio in ways a real phone line never would, so leave the
     // signal alone and let the agent band-limit it.
-    //
     const mic = await createLocalAudioTrack({
       echoCancellation: true,
       noiseSuppression: false,
       autoGainControl: false,
     });
     await room.localParticipant.publishTrack(mic);
-    say('Connected. Wait for the agent to speak, then reply in Urdu.');
+    say(`Connected. Wait for the agent to speak, then reply in ${chosenName}.`);
   } catch (error) {
     say('Failed: ' + error.message);
     button.disabled = false;

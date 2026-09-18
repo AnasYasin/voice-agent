@@ -136,9 +136,14 @@ docker compose up -d livekit
 DEMO_PASSCODE=<a code> make serve
 ```
 
-Open <http://localhost:8080>, enter the code, allow the mic. `localhost` counts
-as a secure origin, so the microphone works without HTTPS here and will not on
-a public IP. See `deploy/aws/README.md`.
+Open <http://localhost:8080>, pick a language, enter the code, allow the mic.
+`localhost` counts as a secure origin, so the microphone works without HTTPS
+here and will not on a public IP. See `deploy/aws/README.md`.
+
+The language toggle shows one button per folder under `lang/`, fetched from
+`/api/languages`. `AGENT_LANGUAGE` only decides which one starts selected.
+Each call runs in the language its caller picked, so two visitors can be on
+the line in two languages at once.
 
 It refuses to start without `DEMO_PASSCODE`, on purpose. `DEMO_MAX_CALLS`
 defaults to 3 and `DEMO_CALL_SECONDS` to 300.

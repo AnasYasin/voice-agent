@@ -45,9 +45,11 @@ def require(name: str) -> str:
     return value
 
 
-def build_session(call_id: str, caller_id: str, chat: bool = False, talk: bool = False) -> Session:
+def build_session(
+    call_id: str, caller_id: str, locale: str, chat: bool = False, talk: bool = False
+) -> Session:
     """Wire one call. Every provider is chosen here and nowhere else."""
-    language = language_module.load()
+    language = language_module.load(locale)
 
     voice = tts.build(
         require("AZURE_SPEECH_KEY"),
@@ -113,7 +115,9 @@ async def run_once(
 ) -> None:
     store = await connect_store()
     recordings = build_recordings()
-    session = build_session(call_id, caller_id, chat=chat, talk=talk)
+    session = build_session(
+        call_id, caller_id, language_module.default_locale(), chat=chat, talk=talk
+    )
     transport = build_transport(call_id)
 
     print(f"\n  room    {transport.room_name}")
@@ -199,6 +203,10 @@ async def serve() -> None:
         # proxy these are genuinely different hosts.
         public_url=os.getenv("DEMO_PUBLIC_LIVEKIT_URL", "ws://localhost:7880"),
         store=store,
+        # Every pack on disk is offered on the page. AGENT_LANGUAGE picks the
+        # one selected when it loads.
+        languages=language_module.available(),
+        default_language=language_module.default_locale(),
         recordings=build_recordings(),
         max_calls=int(os.getenv("DEMO_MAX_CALLS", "3")),
         call_seconds=int(os.getenv("DEMO_CALL_SECONDS", "300")),
