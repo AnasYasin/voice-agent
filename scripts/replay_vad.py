@@ -65,6 +65,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Replay a recording through the voice detector.")
     parser.add_argument("recording", type=Path, help="call.wav or caller.wav from a call folder")
     parser.add_argument("--model-rate", type=int, default=16000, help="8000 to see the old failure")
+    parser.add_argument(
+        "--activation", type=float, default=0.5, help="speech probability that starts a turn"
+    )
+    parser.add_argument(
+        "--gain",
+        type=float,
+        default=1.0,
+        help="multiply the audio first, to see what a louder caller would do",
+    )
     args = parser.parse_args()
 
     rate, pcm = caller_channel(args.recording)

@@ -170,13 +170,31 @@ class BrowserTransport:
         speaking = self._say(source, session.greet(**fields), session, hung_up)
         started_speaking = clock()
         events = vad_stream.__aiter__()
+        # Diagnosis, 18 Sep 2026: two real calls went deaf mid-call. This says,
+        # every five seconds, whether the detector is still running inference
+        # and what the highest speech probability it saw was, so a dead
+        # detector and a detector that hears no speech look different in the log.
+        window_started = clock()
+        inferences = 0
+        loudest = 0.0
 
         try:
             while True:
                 event = await self._next(events, hung_up)
                 if event is None:
                     break
-                if event.type != VADEventType.INFERENCE_DONE:
+                if event.type == VADEventType.INFERENCE_DONE:
+                    inferences += 1
+                    loudest = max(loudest, event.probability)
+                    if clock() - window_started >= 5:
+                        log.info(
+                            "vad 5s: %d inferences, max speech probability %.2f, speaking=%s",
+                            inferences,
+                            loudest,
+                            event.speaking,
+                        )
+                        window_started, inferences, loudest = clock(), 0, 0.0
+                else:
                     log.debug("vad %s", event.type)
 
                 if event.type == VADEventType.START_OF_SPEECH:

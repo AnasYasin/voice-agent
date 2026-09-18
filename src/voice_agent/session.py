@@ -292,10 +292,14 @@ class Session:
         await self._ears.open()
         self._band = audio_module.Telephone()
         self._tape = audio_module.Tape(self.work_dir / "call.wav", channels=2)
+        # Diagnosis, 18 Sep 2026. The detector hears the caller before the
+        # phone filter, so this is the audio to replay when it goes deaf.
+        self._raw_tape = audio_module.Tape(self.work_dir / "caller_raw.wav")
 
     async def close(self) -> None:
         await self._ears.close()
         self._tape.close()
+        self._raw_tape.close()
 
     async def listen(self, pcm: bytes) -> None:
         """Caller audio, as the transport receives it.
@@ -310,6 +314,7 @@ class Session:
         sides arrive at the pace of the call, so this is what keeps the two
         channels in step.
         """
+        self._raw_tape.write(pcm)
         pcm = self._band(pcm)
         agent = bytes(self._agent_pending[: len(pcm)])
         del self._agent_pending[: len(pcm)]
