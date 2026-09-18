@@ -1,23 +1,32 @@
-"""Component 7. Call transcripts to Postgres.
+"""Components 7 and 8. Call transcripts to Postgres, recordings to S3.
 
 One row per call, one row per turn. The turn text is indexed for full-text
 search with the `simple` configuration, which splits on whitespace and
 punctuation and lowercases. Urdu script has no stemmer in Postgres and needs
 none for this; Roman Urdu and English words in the same line match too.
 
+The recording is the stereo `call.wav` the session wrote, uploaded under
+`calls/YYYY/MM/DD/<call_id>.wav`. Its key goes on the call row, so a call in
+Postgres leads to its audio. The bucket deletes recordings after 90 days; the
+transcript stays.
+
 Written once, when the call ends. Nothing here runs while a caller is waiting.
 The transcript JSON in the call folder is the record until then.
 
-Reads its connection URL from whoever builds it. main.py reads the environment.
+Reads its connection URL and bucket from whoever builds it. main.py reads the
+environment.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import asyncpg
+import boto3
 
 ConnectionFailed = (OSError, asyncpg.PostgresError)
 
@@ -53,8 +62,9 @@ create index if not exists turns_search on turns using gin (search);
 
 INSERT_CALL = """
 insert into calls
-    (call_id, caller_id, language, started_at, ended_at, outcome, slots, fields, audio_dir)
-values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9)
+    (call_id, caller_id, language, started_at, ended_at, outcome, slots, fields, audio_dir,
+     recording)
+values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10)
 """
 
 INSERT_TURN = """
@@ -101,6 +111,7 @@ class Store:
                 json.dumps(record["slots"], ensure_ascii=False),
                 json.dumps(record["fields"], ensure_ascii=False),
                 record["audio_dir"],
+                record["recording"],
             )
             await connection.executemany(INSERT_TURN, turns)
 
@@ -118,3 +129,35 @@ async def connect(url: str) -> Store:
     async with pool.acquire() as connection:
         await connection.execute(SCHEMA)
     return Store(pool)
+
+
+class Recordings:
+    """Component 8. One stereo WAV per call, in S3.
+
+    Credentials come from wherever boto3 finds them. On the box that is the
+    instance role, so no key is ever written to disk there.
+    """
+
+    def __init__(self, bucket: str, client: Any) -> None:
+        self.bucket = bucket
+        self._client = client
+
+    @staticmethod
+    def key(call_id: str, started_at: str) -> str:
+        day = datetime.fromisoformat(started_at)
+        return f"calls/{day:%Y/%m/%d}/{call_id}.wav"
+
+    async def upload(self, path: Path, key: str) -> str:
+        """Blocking network work, moved off the loop so other calls keep going."""
+        await asyncio.to_thread(
+            self._client.upload_file,
+            str(path),
+            self.bucket,
+            key,
+            ExtraArgs={"ContentType": "audio/wav"},
+        )
+        return key
+
+
+def recordings(bucket: str, region: str) -> Recordings:
+    return Recordings(bucket, boto3.client("s3", region_name=region))

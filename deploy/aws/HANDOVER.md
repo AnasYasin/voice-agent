@@ -1,6 +1,6 @@
 # Handover: the demo on AWS
 
-Updated 31 Aug 2026. The demo is **up and serving**:
+Updated 18 Sep 2026. The demo is **up and serving**:
 
     https://13.203.35.195      passcode: change-me
 
@@ -27,7 +27,7 @@ stays up, mints a token per visitor and runs a session for each of them.
 | Volume | 30 GiB gp3 |
 | Repo | `~/voice-agent`, branch `dev` |
 | Deploy dir | `~/voice-agent/deploy/aws` |
-| AWS account | not the one the local `aws` CLI is configured for |
+| AWS account | 902371997994, the one the local `aws` CLI is configured for |
 
 Secrets live in `~/voice-agent/.env` and are not in git. `.env.example` lists
 every variable. `PUBLIC_IP=13.203.35.195` is now in `.env` too (see bug 2).
@@ -54,6 +54,22 @@ docker compose --env-file ../../.env exec postgres psql -U agent -d voice_agent 
 Demo callers are stored under a `visitor-xxxxxxxx` caller id minted with their
 token, so the calls table tells the demo visitors apart.
 
+## Recordings
+
+Every call's stereo `call.wav` is uploaded at call end to the bucket
+`voice-agent-calls-902371997994` in ap-south-1, under
+`calls/YYYY/MM/DD/<call_id>.wav`, and the key is in the `recording` column.
+The bucket blocks public access, encrypts at rest, and deletes recordings after
+90 days. `S3_BUCKET` in `.env` names it.
+
+The box signs uploads with the instance role `voice-agent-box`, which can put,
+get and list under `calls/` in that one bucket and nothing else. No AWS key is
+on the box. To listen to a call from your laptop:
+
+```bash
+aws s3 cp s3://voice-agent-calls-902371997994/calls/2026/09/17/<call_id>.wav .
+```
+
 Verified from the public internet:
 
 - `https://13.203.35.195/` serves the passcode page with a valid Let's Encrypt
@@ -65,8 +81,8 @@ Verified from the public internet:
 - Port 80 answers from outside; the ACME HTTP-01 challenge succeeded, which
   proves it. The security group is fine.
 
-Not yet exercised: a real browser call end to end (mic in, voice back). The
-signalling and token path are confirmed; the media path is not.
+A real browser call end to end was made on 17 Sep 2026 from Pakistan: 14 turns,
+saved to Postgres, audio on disk. The media path works.
 
 ## The certificate
 

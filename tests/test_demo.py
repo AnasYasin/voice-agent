@@ -32,6 +32,21 @@ class FakeStore:
         self.saved.append(record)
 
 
+class FakeRecordings:
+    """Remembers what it was asked to upload. No bucket."""
+
+    def __init__(self) -> None:
+        self.uploaded: list[tuple[str, str]] = []
+
+    @staticmethod
+    def key(call_id: str, started_at: str) -> str:
+        return f"calls/test/{call_id}.wav"
+
+    async def upload(self, path: Path, key: str) -> str:
+        self.uploaded.append((path.name, key))
+        return key
+
+
 class FakeSession:
     """Just enough of a Session for `save_call`: a transcript and a record."""
 
@@ -237,3 +252,23 @@ def test_the_app_exposes_only_what_it_means_to() -> None:
     routes = {(r.method, r.resource.canonical) for r in app.router.routes() if r.method != "HEAD"}
 
     assert routes == {("GET", "/"), ("GET", "/healthz"), ("POST", "/api/session")}
+
+
+async def test_the_recording_is_uploaded_and_its_key_saved(tmp_path: Path) -> None:
+    """The row points at the audio. Upload first, so the key exists to save."""
+    store, recordings = FakeStore(), FakeRecordings()
+    demo = Demo(passcode="x", public_url="wss://example/rtc", store=store, recordings=recordings)
+
+    await demo._run(FakeSession(tmp_path / "taped", turns=2), Exploding(), call_id="taped")
+
+    assert recordings.uploaded == [("call.wav", "calls/test/taped.wav")]
+    assert store.saved[0]["recording"] == "calls/test/taped.wav"
+
+
+async def test_without_a_bucket_the_recording_stays_on_disk(tmp_path: Path) -> None:
+    store = FakeStore()
+    demo = Demo(passcode="x", public_url="wss://example/rtc", store=store)
+
+    await demo._run(FakeSession(tmp_path / "local", turns=2), Exploding(), call_id="local")
+
+    assert store.saved[0]["recording"] == ""

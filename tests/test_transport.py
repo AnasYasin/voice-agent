@@ -50,12 +50,27 @@ class FakeSource:
         self.frames.append(frame)
 
 
+def ignore(frame: bytes) -> None:
+    """A session that keeps no recording."""
+
+
 def speaking(*chunks: bytes) -> Speaking:
     async def produce() -> AsyncIterator[bytes]:
         for chunk in chunks:
             yield chunk
 
     return Speaking(chunks=produce(), state="talk", expects_reply=True)
+
+
+async def test_every_frame_played_is_handed_back_for_the_recording() -> None:
+    """The recording's right channel is whatever went into the room, no more."""
+    source = FakeSource()
+    handed: list[bytes] = []
+
+    await transport()._play(source, speaking(b"\x01" * (FRAME_BYTES * 3)), handed.append)
+
+    assert len(handed) == len(source.frames) == 3
+    assert all(len(frame) == FRAME_BYTES for frame in handed)
 
 
 # --- tokens ---
@@ -87,7 +102,7 @@ async def test_chunks_are_recut_into_frames() -> None:
     """The voice produces whatever size it likes. LiveKit wants 20 ms."""
     source = FakeSource()
 
-    await transport()._play(source, speaking(b"\x00" * (FRAME_BYTES * 3)))
+    await transport()._play(source, speaking(b"\x00" * (FRAME_BYTES * 3)), ignore)
 
     assert len(source.frames) == 3
     assert all(len(bytes(frame.data)) == FRAME_BYTES for frame in source.frames)
@@ -99,7 +114,7 @@ async def test_a_frame_can_span_two_chunks() -> None:
     source = FakeSource()
     half = FRAME_BYTES // 2
 
-    await transport()._play(source, speaking(b"\x01" * half, b"\x02" * half))
+    await transport()._play(source, speaking(b"\x01" * half, b"\x02" * half), ignore)
 
     assert len(source.frames) == 1
     assert bytes(source.frames[0].data) == b"\x01" * half + b"\x02" * half
@@ -109,7 +124,7 @@ async def test_the_tail_is_padded_rather_than_dropped() -> None:
     """The last few milliseconds of a reply are usually the last word of it."""
     source = FakeSource()
 
-    await transport()._play(source, speaking(b"\x01" * (FRAME_BYTES + 10)))
+    await transport()._play(source, speaking(b"\x01" * (FRAME_BYTES + 10)), ignore)
 
     assert len(source.frames) == 2
     assert bytes(source.frames[1].data) == b"\x01" * 10 + b"\x00" * (FRAME_BYTES - 10)
@@ -119,7 +134,7 @@ async def test_frames_carry_the_right_sample_count() -> None:
     """A wrong samples_per_channel plays back at the wrong speed."""
     source = FakeSource()
 
-    await transport()._play(source, speaking(b"\x00" * FRAME_BYTES))
+    await transport()._play(source, speaking(b"\x00" * FRAME_BYTES), ignore)
 
     assert source.frames[0].samples_per_channel == FRAME_BYTES // 2
     assert source.frames[0].sample_rate == settings.audio.sample_rate
@@ -132,7 +147,7 @@ async def test_playback_is_paced_to_the_clock() -> None:
     source = FakeSource()
     started = asyncio.get_running_loop().time()
 
-    await transport()._play(source, speaking(b"\x00" * (FRAME_BYTES * 10)))
+    await transport()._play(source, speaking(b"\x00" * (FRAME_BYTES * 10)), ignore)
 
     assert asyncio.get_running_loop().time() - started >= 9 * FRAME_MS / 1000
 
@@ -149,7 +164,7 @@ async def test_stopping_playback_stops_the_voice_behind_it() -> None:
             closed.set()
 
     playing = asyncio.create_task(
-        transport()._play(FakeSource(), Speaking(voice(), state="talk", expects_reply=True))
+        transport()._play(FakeSource(), Speaking(voice(), state="talk", expects_reply=True), ignore)
     )
     await asyncio.sleep(FRAME_MS / 1000)
     playing.cancel()

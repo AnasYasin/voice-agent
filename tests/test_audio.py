@@ -201,3 +201,21 @@ def test_pcm_reads_back_what_the_tape_wrote(tmp_path: Path) -> None:
         tape.write(written)
 
     assert pcm(tmp_path / "said.wav") == written
+
+
+def test_a_stereo_tape_interleaves_left_and_right(tmp_path: Path) -> None:
+    """Caller left, agent right, sample by sample. The shorter side is padded
+    with silence so a frame with nobody speaking on one side still lines up."""
+    import wave
+    from array import array
+
+    from voice_agent.audio import Tape
+
+    with Tape(tmp_path / "call.wav", channels=2) as tape:
+        tape.write_stereo(array("h", [1, 2, 3]).tobytes(), array("h", [9]).tobytes())
+
+    with wave.open(str(tmp_path / "call.wav")) as recorded:
+        assert recorded.getnchannels() == 2
+        samples = array("h", recorded.readframes(recorded.getnframes()))
+
+    assert list(samples) == [1, 9, 2, 0, 3, 0]

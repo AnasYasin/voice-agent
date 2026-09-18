@@ -158,19 +158,35 @@ class Tape:
 
     Used by the live call path, where there is no finished file to convert and
     the audio has to reach the caller before it reaches the disk.
+
+    Two channels give the call recording: the caller on the left, the agent on
+    the right, one `write` per frame with both sides' samples for that moment.
     """
 
-    def __init__(self, path: Path, config: AudioConfig | None = None) -> None:
+    def __init__(self, path: Path, config: AudioConfig | None = None, channels: int = 1) -> None:
         self.path = path
+        self.channels = channels
         self._rate = (config or settings.audio).sample_rate
         path.parent.mkdir(parents=True, exist_ok=True)
         self._wave = wave.open(str(path), "wb")
-        self._wave.setnchannels(1)
+        self._wave.setnchannels(channels)
         self._wave.setsampwidth(2)  # s16
         self._wave.setframerate(self._rate)
 
     def write(self, pcm: bytes) -> None:
         self._wave.writeframes(pcm)
+
+    def write_stereo(self, left: bytes, right: bytes) -> None:
+        """One frame of both channels. The shorter side is padded with silence."""
+        length = max(len(left), len(right))
+        left_samples = array("h")
+        left_samples.frombytes(left.ljust(length, b"\x00"))
+        right_samples = array("h")
+        right_samples.frombytes(right.ljust(length, b"\x00"))
+        interleaved = array("h", bytes(length * 2))
+        interleaved[0::2] = left_samples
+        interleaved[1::2] = right_samples
+        self._wave.writeframes(interleaved.tobytes())
 
     def close(self) -> None:
         self._wave.close()

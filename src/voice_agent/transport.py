@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from contextlib import aclosing
 from typing import Any, Protocol, runtime_checkable
 
@@ -224,7 +225,7 @@ class BrowserTransport:
         """Start playback in the background so the caller can interrupt it."""
 
         async def play() -> None:
-            await self._play(source, speaking)
+            await self._play(source, speaking, session.played)
             if session.finished:
                 hung_up.set()
 
@@ -240,8 +241,13 @@ class BrowserTransport:
             vad_stream.push_frame(event.frame)
             await session.listen(bytes(event.frame.data))
 
-    async def _play(self, source: rtc.AudioSource, speaking: Speaking) -> None:
+    async def _play(
+        self, source: rtc.AudioSource, speaking: Speaking, played: Callable[[bytes], None]
+    ) -> None:
         """Stream the agent's voice into the room, paced to the clock.
+
+        Every frame that goes out is also handed to `played`, which is how the
+        session records the agent's side of the call in step with the caller's.
 
         Pacing matters for more than smoothness. Pushing frames as fast as
         LiveKit accepts them means playback finishes in the agent's mind long
@@ -259,7 +265,7 @@ class BrowserTransport:
         clock = asyncio.get_running_loop().time
         deadline = clock()
         pending = b""
-        played = 0
+        sent = 0
 
         async def send(frame: bytes) -> None:
             nonlocal deadline
@@ -271,6 +277,7 @@ class BrowserTransport:
                     samples_per_channel=len(frame) // 2,
                 )
             )
+            played(frame)
             deadline += frame_seconds
             ahead = deadline - clock()
             if ahead > 0:
@@ -285,11 +292,11 @@ class BrowserTransport:
                     while len(pending) >= step:
                         await send(pending[:step])
                         pending = pending[step:]
-                        played += 1
+                        sent += 1
 
             if pending:
                 await send(pending.ljust(step, b"\x00"))
-                played += 1
+                sent += 1
         except asyncio.CancelledError:
-            log.info("[%s] playback cut short after %d frames", speaking.state, played)
+            log.info("[%s] playback cut short after %d frames", speaking.state, sent)
             raise

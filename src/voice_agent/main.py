@@ -81,6 +81,16 @@ async def connect_store() -> store_module.Store:
         ) from None
 
 
+def build_recordings() -> store_module.Recordings | None:
+    """S3 for the call audio. An empty S3_BUCKET keeps recordings on disk only,
+    which is how a laptop runs without AWS access."""
+    bucket = os.getenv("S3_BUCKET", "")
+    if not bucket:
+        log.info("S3_BUCKET is empty, recordings stay in %s", CALLS_DIR)
+        return None
+    return store_module.recordings(bucket, require("AWS_REGION"))
+
+
 def build_transport(call_id: str) -> BrowserTransport:
     # A room per call, not one shared room. A browser tab left open from an
     # earlier run stays joined, and the agent would greet that ghost instead of
@@ -102,6 +112,7 @@ async def run_once(
     talk: bool = False,
 ) -> None:
     store = await connect_store()
+    recordings = build_recordings()
     session = build_session(call_id, caller_id, chat=chat, talk=talk)
     transport = build_transport(call_id)
 
@@ -121,7 +132,7 @@ async def run_once(
     finally:
         # Whatever ended the call, a call with turns in it is a call to keep.
         if session.transcript:
-            await save_call(session, store)
+            await save_call(session, store, recordings)
         await store.close()
 
     result = session.result
@@ -131,14 +142,24 @@ async def run_once(
     print(f"\n  audio in {session.work_dir}\n")
 
 
-async def save_call(session: Session, store: store_module.Store) -> None:
-    """The finished call to disk and to Postgres.
+async def save_call(
+    session: Session,
+    store: store_module.Store,
+    recordings: store_module.Recordings | None,
+) -> None:
+    """The finished call to disk, to S3 and to Postgres, in that order.
 
     The JSON was already there, rewritten after every turn. This writes it a
-    last time with the outcome, renders the text version for reading a call
-    back without a tool, then hands the same record to the store.
+    last time with the outcome and the recording's key, renders the text
+    version for reading a call back without a tool, then hands the same record
+    to the store. The upload goes first so the row can point at the audio.
     """
     record = session.record()
+    record["recording"] = ""
+    if recordings:
+        key = recordings.key(record["call_id"], record["started_at"])
+        record["recording"] = await recordings.upload(session.work_dir / "call.wav", key)
+
     (session.work_dir / "transcript.json").write_text(
         json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -178,6 +199,7 @@ async def serve() -> None:
         # proxy these are genuinely different hosts.
         public_url=os.getenv("DEMO_PUBLIC_LIVEKIT_URL", "ws://localhost:7880"),
         store=store,
+        recordings=build_recordings(),
         max_calls=int(os.getenv("DEMO_MAX_CALLS", "3")),
         call_seconds=int(os.getenv("DEMO_CALL_SECONDS", "300")),
     )

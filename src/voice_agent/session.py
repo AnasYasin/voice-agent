@@ -39,11 +39,13 @@ Same flow engine, same language pack, same transcript. Streaming does not make
 the call smarter, it stops the caller waiting for four stages in a row.
 
 Audio for the call lands in `work_dir`: one WAV per line the agent said, and on
-a live call one continuous `caller.wav`, because a caller streaming into an
-open recognizer never produces a file per turn. `transcript.json` sits next to
-them and is rewritten after every exchange, so a call that dies mid-sentence
-still leaves its transcript on disk. Postgres gets the same record once, at the
-end; that is store.py.
+a live call one stereo `call.wav` for the whole call, caller on the left and
+agent on the right. The transport hands back each frame as it plays it, and
+the caller's frames set the clock, so the two channels line up the way the
+call sounded. `transcript.json` sits next to them and is rewritten after every
+exchange, so a call that dies mid-sentence still leaves its transcript on disk.
+Postgres and S3 get the record and the recording once, at the end; that is
+store.py.
 """
 
 from __future__ import annotations
@@ -140,7 +142,8 @@ class Session:
         self.transcript: list[Exchange] = []
         self._turns = 0
         self._ears: Any = None
-        self._caller: Any = None
+        self._tape: Any = None
+        self._agent_pending = bytearray()
         self._band: Any = None
         self._lookahead = int(settings.tts.lookahead_seconds * 1000 / settings.audio.frame_ms)
 
@@ -288,11 +291,11 @@ class Session:
         self._ears = self.stt.stream(self.language.stt_language)
         await self._ears.open()
         self._band = audio_module.Telephone()
-        self._caller = audio_module.Tape(self.work_dir / "caller.wav")
+        self._tape = audio_module.Tape(self.work_dir / "call.wav", channels=2)
 
     async def close(self) -> None:
         await self._ears.close()
-        self._caller.close()
+        self._tape.close()
 
     async def listen(self, pcm: bytes) -> None:
         """Caller audio, as the transport receives it.
@@ -301,10 +304,22 @@ class Session:
         and nowhere else. Browser audio would otherwise flatter the STT, and a
         demo that sounds better than the phone call it stands in for is a demo
         that lies.
+
+        Each caller frame also writes one stereo frame of the recording, taking
+        the same length of agent audio from what `played` has handed over. Both
+        sides arrive at the pace of the call, so this is what keeps the two
+        channels in step.
         """
         pcm = self._band(pcm)
-        self._caller.write(pcm)
+        agent = bytes(self._agent_pending[: len(pcm)])
+        del self._agent_pending[: len(pcm)]
+        self._tape.write_stereo(pcm, agent)
         await self._ears.push(pcm)
+
+    def played(self, pcm: bytes) -> None:
+        """Agent audio, as the transport has just played it. Goes to the right
+        channel of the recording on the next caller frame."""
+        self._agent_pending += pcm
 
     def greet(self, **fields: Any) -> Speaking:
         """Open the call. `fields` fill the script placeholders."""

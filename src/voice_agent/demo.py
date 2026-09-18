@@ -46,7 +46,7 @@ from typing import Any
 from aiohttp import web
 
 from voice_agent.main import build_session, build_transport, save_call
-from voice_agent.store import Store
+from voice_agent.store import Recordings, Store
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +65,7 @@ class Demo:
         passcode: str,
         public_url: str,
         store: Store,
+        recordings: Recordings | None = None,
         max_calls: int = 3,
         call_seconds: int = 300,
     ) -> None:
@@ -77,6 +78,7 @@ class Demo:
         self.passcode = passcode
         self.public_url = public_url
         self.store = store
+        self.recordings = recordings
         self.max_calls = max_calls
         self.call_seconds = call_seconds
         self.calls: set[asyncio.Task] = set()
@@ -132,7 +134,7 @@ class Demo:
             log.exception("call %s failed", call_id)
         finally:
             if session.transcript:
-                await save_call(session, self.store)
+                await save_call(session, self.store, self.recordings)
 
     async def stop(self) -> None:
         """Hang up on everyone. Only used when the process is going down."""

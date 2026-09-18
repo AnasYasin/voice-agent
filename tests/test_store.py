@@ -37,6 +37,7 @@ def make_record(caller_id: str = "03001234567", **changes: Any) -> dict[str, Any
         "outcome": "done",
         "slots": {"confirmed": True},
         "audio_dir": "/tmp/calls/test",
+        "recording": "",
         "turns": [
             {
                 "turn": 1,
@@ -150,6 +151,58 @@ async def test_a_wrong_url_fails_with_the_error_main_catches() -> None:
         await store_module.connect("postgresql://nobody:wrong@127.0.0.1:1/none")
 
 
+def test_recording_keys_are_by_day_then_call() -> None:
+    """One folder per day, so a bucket listing reads like a calendar."""
+    key = store_module.Recordings.key("2026-09-17_22-41-31_a126bd", "2026-09-17T22:41:32+00:00")
+
+    assert key == "calls/2026/09/17/2026-09-17_22-41-31_a126bd.wav"
+
+
+async def test_an_upload_hands_the_file_to_s3_as_audio(tmp_path: Any) -> None:
+    class FakeClient:
+        def __init__(self) -> None:
+            self.calls: list[Any] = []
+
+        def upload_file(self, *args: Any, **kwargs: Any) -> None:
+            self.calls.append((args, kwargs))
+
+    client = FakeClient()
+    recording = tmp_path / "call.wav"
+    recording.write_bytes(b"RIFF")
+
+    key = await store_module.Recordings("bucket", client).upload(recording, "calls/x.wav")
+
+    assert key == "calls/x.wav"
+    assert client.calls == [
+        ((str(recording), "bucket", "calls/x.wav"), {"ExtraArgs": {"ContentType": "audio/wav"}})
+    ]
+
+
+@pytest.mark.skipif(not os.getenv("S3_BUCKET"), reason="needs S3_BUCKET and AWS credentials")
+async def test_a_real_upload_lands_in_the_bucket(tmp_path: Any) -> None:
+    """Against the real bucket, then deleted. Proves the credentials and the
+    bucket policy, which no fake can."""
+    import wave
+
+    recordings = store_module.recordings(os.environ["S3_BUCKET"], os.environ["AWS_REGION"])
+    path = tmp_path / "call.wav"
+    with wave.open(str(path), "wb") as tape:
+        tape.setnchannels(2)
+        tape.setsampwidth(2)
+        tape.setframerate(8000)
+        tape.writeframes(b"\x00" * 3200)
+    key = recordings.key(f"test_{uuid.uuid4().hex[:8]}", datetime.now().astimezone().isoformat())
+
+    await recordings.upload(path, key)
+    try:
+        head = recordings._client.head_object(Bucket=recordings.bucket, Key=key)
+    finally:
+        recordings._client.delete_object(Bucket=recordings.bucket, Key=key)
+
+    assert head["ContentType"] == "audio/wav"
+    assert head["ContentLength"] == path.stat().st_size
+
+
 KEYS = ("ANTHROPIC_API_KEY", "AZURE_SPEECH_KEY", "ELEVENLABS_API_KEY")
 
 
@@ -203,7 +256,7 @@ async def test_a_real_call_lands_in_postgres(store: store_module.Store, tmp_path
     finally:
         await session.close()
 
-    await save_call(session, store)
+    await save_call(session, store, None)
     try:
         call = await store._pool.fetchrow("select * from calls where call_id = $1", call_id)
         turns = await store._pool.fetch(

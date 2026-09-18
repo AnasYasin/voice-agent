@@ -15,7 +15,7 @@ browser. See [TESTING.md](TESTING.md) to run it.
 | STT | ElevenLabs Scribe, compared against Deepgram Nova-3 |
 | TTS | Azure Neural `ur-PK-UzmaNeural`, fixed lines cached |
 | LLM | Claude Sonnet 5, slot extraction only |
-| Storage | Postgres for every call's transcript, searchable. S3 for recordings next |
+| Storage | Postgres for every call's transcript, searchable. S3 for the stereo recording |
 
 The binding constraint is a Pakistani local caller ID, not AI quality. Managed
 platforms cannot provide one, and calls from outside Pakistan pay international
@@ -58,7 +58,7 @@ src/voice_agent/
   tts.py        azure voice + cache, whole files and chunks
   flow.py       state machine over script.yaml
   session.py    wires one call, transport-agnostic, writes transcript.json per turn
-  store.py      one call and its turns into postgres, full-text indexed
+  store.py      one call and its turns into postgres, its recording into s3
   transport.py  livekit browser (SIP and PSTN later)
   main.py       process startup, the only module reading env
   lang/ur/      normalisation, keyterms, sentence ends, call script
@@ -95,8 +95,16 @@ whitespace and lowercases, which is right for Urdu, Roman Urdu and English in
 the same sentence, and needs nothing per language. The language of each call
 is on its row.
 
+## Recordings in S3
+
+A live call is recorded as one stereo WAV, caller on the left and agent on the
+right, with the two channels in step. At call end it is uploaded under
+`calls/YYYY/MM/DD/<call_id>.wav` and the key goes on the call row, so a row in
+Postgres leads to its audio. The bucket deletes recordings after 90 days; the
+transcript stays. With `S3_BUCKET` empty the file stays under `calls/` on disk.
+
 ## Not built
 
-SIP and PSTN transports, the S3 recording store, answering machine detection,
-lead import and the dialer. Prompt tuning and appointment handling are
+SIP and PSTN transports, answering machine detection, lead import and the
+dialer. Prompt tuning and appointment handling are
 deliberately deferred until the architecture is finished.

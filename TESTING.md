@@ -15,8 +15,9 @@ pip install -e .          # else: ModuleNotFoundError: voice_agent
 
 ```bash
 docker compose up -d postgres   # the store tests and the agent both need it
-pytest -m "not live"            # 222 tests, no keys, no network
-pytest -m live                  # 42 tests, real APIs and Postgres, fraction of a cent
+pytest -m "not live"            # 228 tests, no keys, no network
+pytest -m live                  # 45 tests, real APIs and Postgres, fraction of a cent
+S3_BUCKET=<bucket> pytest -m live -k real_upload   # the upload test, against the real bucket
 ```
 
 One live test runs the whole agent with no microphone: the caller is synthesised
@@ -77,8 +78,8 @@ Terminal 3 prints a **caller token** and waits. Open
 That page exists for this flow. The demo server in section 4 mints its own. The agent speaks first. Answer in Urdu.
 
 Outcome and slots print in terminal 3. Audio lands under `calls/`: one WAV per
-line the agent said, and one `caller.wav` for the whole call, because the
-recognizer stays open and the caller's audio never stops to become a file.
+line the agent said, and one stereo `call.wav` for the whole call, caller on
+the left and agent on the right. Play it and both sides are where they were.
 `transcript.json` sits next to them and is rewritten after every turn, so it is
 there even if the process dies mid-call.
 

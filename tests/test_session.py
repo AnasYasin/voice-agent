@@ -540,16 +540,45 @@ async def test_caller_audio_is_band_limited_before_the_recognizer(tmp_path: Path
     assert len(session.stt.ears.heard) == 1600
 
 
-async def test_the_caller_is_recorded_once_for_the_whole_call(tmp_path: Path) -> None:
-    """There is no file per turn any more. The recognizer stays open, so the
-    caller's audio never stops to become one."""
+async def test_the_call_is_recorded_once_in_stereo(tmp_path: Path) -> None:
+    """One file for the whole call, caller left and agent right. The recognizer
+    stays open, so the caller's audio never stops to become a file per turn."""
+    from voice_agent.audio import probe
+
     session = live_session(tmp_path)
     await session.open()
     await session.listen(b"\x00\x00" * 800)
     await session.close()
 
-    assert (session.work_dir / "caller.wav").exists()
+    info = probe(session.work_dir / "call.wav")
+    assert info.channels == 2
+    assert info.sample_rate == 8000
     assert session.stt.ears.closed
+
+
+async def test_the_agent_channel_lines_up_with_the_caller_frames(tmp_path: Path) -> None:
+    """Agent audio handed over by the transport lands on the right channel of
+    the very next caller frame, and silence fills the frames where the agent
+    said nothing. That is what keeps the two sides in step on playback."""
+    import wave
+    from array import array
+
+    session = live_session(tmp_path)
+    await session.open()
+    frame = 320  # 20 ms at 8 kHz, 16-bit
+    await session.listen(b"\x00" * frame)  # agent silent
+    session.played(b"\x10\x00" * (frame // 2))  # agent speaks one frame
+    await session.listen(b"\x00" * frame)
+    await session.listen(b"\x00" * frame)  # agent silent again
+    await session.close()
+
+    with wave.open(str(session.work_dir / "call.wav")) as tape:
+        samples = array("h", tape.readframes(tape.getnframes()))
+    right = samples[1::2]
+    per_frame = frame // 2
+    assert set(right[:per_frame]) == {0}
+    assert set(right[per_frame : 2 * per_frame]) == {16}
+    assert set(right[2 * per_frame :]) == {0}
 
 
 async def test_a_keypad_press_skips_the_recognizer_and_the_model(tmp_path: Path) -> None:
