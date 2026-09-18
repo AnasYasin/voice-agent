@@ -157,7 +157,9 @@ follows the audio itself: it grows with the agent's voice and rings with the
 caller's.
 
 It refuses to start without `DEMO_PASSCODE`, on purpose. `DEMO_MAX_CALLS`
-defaults to 3 and `DEMO_CALL_SECONDS` to 300.
+defaults to 3 and `DEMO_CALL_SECONDS` to 300. Twelve seconds before the limit the
+agent says its time is up, in the call's language, and hangs up on that line.
+The line is `time_up` in `lang/<code>/agent.yaml`.
 
 ```bash
 curl localhost:8080/healthz     # {"ok": true, "in_flight": 0, "busy": false}

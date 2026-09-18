@@ -67,6 +67,7 @@ WEB_ROOT = Path(__file__).resolve().parents[2] / "web"
 DEMO = web.AppKey("demo", "Demo")
 
 
+GOODBYE_SECONDS = 12  # how long before the limit the agent says it has to go
 PURPOSE_LIMIT = 2000  # characters. Long enough for a real brief, short enough to bound cost.
 
 RULES = """
@@ -174,9 +175,12 @@ class Demo:
         The call is saved however it ended. A visitor who closed the tab
         mid-sentence still said things worth reading back.
         """
+        goodbye = asyncio.create_task(self._goodbye(session))
         try:
+            # The goodbye ends the call at the limit. The hard cut behind it
+            # is for a transport that never gets to play it.
             result = await asyncio.wait_for(
-                transport.run(session, **fields), timeout=self.call_seconds
+                transport.run(session, **fields), timeout=self.call_seconds + GOODBYE_SECONDS
             )
             log.info("call %s ended: %s", call_id, result.outcome)
         except TimeoutError:
@@ -187,8 +191,15 @@ class Demo:
         except Exception:
             log.exception("call %s failed", call_id)
         finally:
+            goodbye.cancel()
             if session.transcript:
                 await save_call(session, self.store, self.recordings)
+
+    async def _goodbye(self, session: Any) -> None:
+        """Shortly before the limit, the agent says it has to go, in the call's
+        language, and the call ends on that line instead of going dead."""
+        await asyncio.sleep(max(0, self.call_seconds - GOODBYE_SECONDS))
+        session.hang_up(session.language.time_up)
 
     async def stop(self) -> None:
         """Hang up on everyone. Only used when the process is going down."""

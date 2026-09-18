@@ -68,6 +68,7 @@ class Language:
     script: Script
     persona: str = ""
     greeting: str = ""
+    time_up: str = ""
 
     def __repr__(self) -> str:  # keeps logs readable, the script is large
         return f"Language({self.locale}, voice={self.tts_voice}, script={self.script.name})"
@@ -101,10 +102,12 @@ def load(locale: str | None = None) -> Language:
     agent_path = pack / AGENT_FILE
     persona = ""
     greeting = ""
+    time_up = ""
     if agent_path.exists():
         profile = yaml.safe_load(agent_path.read_text(encoding="utf-8"))
         persona = profile.get("persona", "")
         greeting = profile.get("greeting", "")
+        time_up = profile.get("time_up", "")
 
     language = Language(
         code=code,
@@ -117,6 +120,7 @@ def load(locale: str | None = None) -> Language:
         script=Script.load(script_path),
         persona=persona,
         greeting=greeting,
+        time_up=time_up,
     )
     log.info("loaded %s", language)
     return language

@@ -180,9 +180,19 @@ class BrowserTransport:
 
         try:
             while True:
-                event = await self._next(events, hung_up)
+                event = await self._next(events, hung_up, session)
                 if event is None:
                     break
+                if isinstance(event, Speaking):
+                    # Something to say that is not a reply, such as the time
+                    # limit's goodbye. Whatever was playing stops for it.
+                    speaking.cancel()
+                    speaking = self._say(source, event, session, hung_up)
+                    started_speaking = clock()
+                    if session.finished:
+                        await asyncio.shield(speaking)
+                        break
+                    continue
                 if event.type == VADEventType.INFERENCE_DONE:
                     inferences += 1
                     loudest = max(loudest, event.probability)
@@ -224,8 +234,9 @@ class BrowserTransport:
             pump.cancel()
             await vad_stream.aclose()
 
-    async def _next(self, events: Any, hung_up: asyncio.Event) -> Any | None:
-        """The next VAD event, or None once the call is over.
+    async def _next(self, events: Any, hung_up: asyncio.Event, session: Session) -> Any | None:
+        """The next VAD event, a line the session wants said, or None once the
+        call is over.
 
         Waiting on the caller is not enough on its own. In talk mode a farewell
         is only known to be a farewell after the model has finished writing it,
@@ -235,9 +246,16 @@ class BrowserTransport:
         """
         speech = asyncio.ensure_future(events.__anext__())
         ended = asyncio.ensure_future(hung_up.wait())
-        done, _ = await asyncio.wait({speech, ended}, return_when=asyncio.FIRST_COMPLETED)
+        interjection = asyncio.ensure_future(session.interjections.get())
+        done, _ = await asyncio.wait(
+            {speech, ended, interjection}, return_when=asyncio.FIRST_COMPLETED
+        )
         ended.cancel()
 
+        if interjection in done:
+            speech.cancel()
+            return interjection.result()
+        interjection.cancel()
         if speech not in done:
             speech.cancel()
             return None

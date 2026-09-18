@@ -703,3 +703,28 @@ async def test_without_a_greeting_the_model_opens_the_call_in_character() -> Non
     said, asking, persona = responder.calls[-1]
     assert (said, asking, persona) == (OPENING_CUE, "", "You confirm dental appointments.")
     assert responder.histories[-1] == [], "the opener starts from a clean history"
+
+
+def test_a_script_call_can_be_ended_from_outside_with_a_last_line() -> None:
+    call = flow()
+    call.start(**CALLER)
+
+    turn = call.end("My time is up. Goodbye.")
+
+    assert turn.say == "My time is up. Goodbye."
+    assert turn.expects_reply is False
+    assert call.finished
+    assert call.result.outcome == "time_limit"
+
+
+def test_a_conversation_can_be_ended_from_outside_and_remembers_the_line() -> None:
+    from voice_agent.flow import Conversation
+
+    call = Conversation(StubResponder("hi"), greeting="hello")
+    call.start()
+
+    call.end("Goodbye.")
+
+    assert call.finished
+    assert call.result.outcome == "time_limit"
+    assert call._history[-1] == {"role": "assistant", "content": "Goodbye."}

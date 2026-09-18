@@ -125,3 +125,9 @@ def test_each_language_knows_its_own_name() -> None:
     """The toggle label, and what a composed persona tells the model to speak."""
     assert load("ur-PK").name == "اردو"
     assert load("en-US").name == "English"
+
+
+def test_each_language_has_a_time_up_line() -> None:
+    """Said before the demo's limit cuts the call, so the line never just dies."""
+    assert load("ur-PK").time_up.endswith("خدا حافظ۔")
+    assert load("en-US").time_up.endswith("Goodbye.")

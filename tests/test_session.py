@@ -889,3 +889,30 @@ async def test_an_abandoned_turn_is_joined_to_the_next_one() -> None:
         f"the two halves should be one turn, got {callers[-1]['content']!r}"
     )
     assert len(callers) == 1, f"the abandoned turn should not stand alone: {callers}"
+
+
+async def test_hang_up_queues_one_last_line_and_ends_the_call(tmp_path: Path) -> None:
+    session = live_session(tmp_path, talk="hi")
+    await session.open()
+    session.greet()
+
+    session.hang_up("Goodbye.")
+
+    assert session.finished
+    assert session.result.outcome == "time_limit"
+    farewell = session.interjections.get_nowait()
+    assert await played(farewell)
+    assert session.transcript[-1].said == "Goodbye."
+
+
+async def test_hang_up_after_the_call_ended_does_nothing(tmp_path: Path) -> None:
+    session = live_session(tmp_path, talk="خدا حافظ۔", ends=True, hears=("bye",))
+    await session.open()
+    session.greet()
+    await played(await session.answer())
+    assert session.finished
+
+    session.hang_up("Goodbye.")
+
+    assert session.interjections.empty()
+    assert session.result.outcome == "hung_up"

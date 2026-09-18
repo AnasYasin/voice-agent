@@ -3,6 +3,10 @@
 
 greeting: Hello. How can I help you today?
 
+# Said when the demo's time limit is about to cut the call, instead of the
+# line simply going dead.
+time_up: I'm sorry, my time is up. I can't keep talking, by design. Goodbye.
+
 persona: >-
   You are a voice agent that speaks English, made by Anas. You are on a live
   phone call with a real person. Talk like a calm, helpful person on the phone.

@@ -12,11 +12,13 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
+from voice_agent import demo as demo_module
 from voice_agent.demo import PURPOSE_LIMIT, Demo, build_app, compose_persona
 
 CODE = "open-sesame"
@@ -54,7 +56,12 @@ class FakeSession:
     def __init__(self, work_dir: Path, turns: int) -> None:
         self.work_dir = work_dir
         self.transcript = ["turn"] * turns
+        self.language = SimpleNamespace(time_up="My time is up. Goodbye.")
+        self.hung_up_with: list[str] = []
         work_dir.mkdir(parents=True, exist_ok=True)
+
+    def hang_up(self, say: str) -> None:
+        self.hung_up_with.append(say)
 
     def record(self) -> dict[str, Any]:
         return {
@@ -299,7 +306,10 @@ async def test_a_call_that_dies_does_not_take_the_server_with_it(tmp_path: Path)
     assert demo.calls == set()
 
 
-async def test_a_caller_who_never_hangs_up_is_cut_off(tmp_path: Path) -> None:
+async def test_a_caller_who_never_hangs_up_is_cut_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(demo_module, "GOODBYE_SECONDS", 0)
     """A demo caller closes the tab instead of saying goodbye, so the deadline
     is what actually ends most of these."""
     store = FakeStore()
@@ -325,7 +335,10 @@ async def test_a_call_that_failed_mid_way_is_still_saved(tmp_path: Path) -> None
     assert store.saved[0]["caller_id"] == "visitor-abc12345"
 
 
-async def test_a_call_nobody_spoke_on_is_not_saved(tmp_path: Path) -> None:
+async def test_a_call_nobody_spoke_on_is_not_saved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(demo_module, "GOODBYE_SECONDS", 0)
     """A visitor who got a token and never connected did not make a call."""
     store = FakeStore()
     demo = Demo(
@@ -376,3 +389,24 @@ async def test_without_a_bucket_the_recording_stays_on_disk(tmp_path: Path) -> N
     await demo._run(FakeSession(tmp_path / "local", turns=2), Exploding(), call_id="local")
 
     assert store.saved[0]["recording"] == ""
+
+
+async def test_the_goodbye_is_said_before_the_limit_in_the_calls_language(tmp_path: Path) -> None:
+    """Twelve seconds before the limit the agent says its time is up, and the
+    call ends on that line rather than the line going dead."""
+    store = FakeStore()
+    demo = Demo(
+        passcode="x", public_url="wss://example/rtc", **LANGUAGES, store=store, call_seconds=12
+    )
+    session = FakeSession(tmp_path / "timed", turns=2)
+
+    class EndsWhenToldTo:
+        async def run(self, session: Any, **fields: Any) -> Any:
+            while not session.hung_up_with:
+                await asyncio.sleep(0.01)
+            return SimpleNamespace(outcome="time_limit")
+
+    await asyncio.wait_for(demo._run(session, EndsWhenToldTo(), call_id="timed"), timeout=5)
+
+    assert session.hung_up_with == ["My time is up. Goodbye."]
+    assert store.saved[0]["call_id"] == "timed"

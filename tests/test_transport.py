@@ -184,7 +184,9 @@ async def test_the_call_can_end_while_nobody_is_talking() -> None:
     hung_up = asyncio.Event()
     never = _Never()
 
-    waiting = asyncio.create_task(transport()._next(never, hung_up))
+    waiting = asyncio.create_task(
+        transport()._next(never, hung_up, SimpleNamespace(interjections=asyncio.Queue()))
+    )
     await asyncio.sleep(0)
     hung_up.set()
 
@@ -192,12 +194,14 @@ async def test_the_call_can_end_while_nobody_is_talking() -> None:
 
 
 async def test_a_caller_speaking_wins_over_waiting() -> None:
-    assert await transport()._next(_Once("speech"), asyncio.Event()) == "speech"
+    quiet = SimpleNamespace(interjections=asyncio.Queue())
+    assert await transport()._next(_Once("speech"), asyncio.Event(), quiet) == "speech"
 
 
 async def test_the_caller_dropping_the_line_ends_the_call() -> None:
     """The events run out. That is a hangup, not an error to raise out of run()."""
-    assert await transport()._next(_Ended(), asyncio.Event()) is None
+    quiet = SimpleNamespace(interjections=asyncio.Queue())
+    assert await transport()._next(_Ended(), asyncio.Event(), quiet) is None
 
 
 class _Never:
@@ -382,3 +386,22 @@ async def test_the_greeting_is_not_cut_off_by_its_own_first_frames(tmp_path: Pat
     )
 
     assert session.transcript[0].said, "the greeting was cancelled before it played"
+
+
+async def test_a_line_from_outside_is_played_and_ends_the_call(tmp_path: Path) -> None:
+    """The time limit's goodbye. The detector never fires; the session is told
+    to hang up with a last line, the transport plays it, and the call ends on
+    it with the outcome saying why."""
+    session = live_session(tmp_path, talk="hi")
+
+    async def limit_reached() -> None:
+        await asyncio.sleep(0.05)
+        session.hang_up("My time is up. Goodbye.")
+
+    limit = asyncio.create_task(limit_reached())
+    await asyncio.wait_for(drive(session, []), timeout=5)
+    await limit
+
+    assert session.transcript[-1].said == "My time is up. Goodbye."
+    assert session.finished
+    assert session.result.outcome == "time_limit"

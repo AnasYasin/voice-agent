@@ -28,13 +28,11 @@ audio:
   # Streaming STT transcribes while they are still talking, so this is now
   # the only part of the wait that is still real.
   #
-  # Shortened from 0.4 on 26 Aug 2026. Still unvalidated against real Urdu
-  # recordings, because synthesised speech has no thinking pauses in it and so
-  # cannot tell you how often a real caller pauses this long mid-sentence.
-  # If callers get cut off mid-sentence, this is the first thing to put back.
-  # A cut-off caller is not lost: the transport keeps pushing their audio to
-  # the recognizer, so the rest of what they said arrives as the next turn.
-  vad_silence_seconds: 0.25
+  # Was 0.25 from 26 Aug to 18 Sep 2026. Six real calls that day, in both
+  # languages, show turns ending mid-phrase at natural pauses: "and we bought
+  # some cheese and", "وہاں پہ". The agent then answers a fragment and talks
+  # over the rest. Half a second costs a quarter second per turn and stops it.
+  vad_silence_seconds: 0.5
 
   # One frame of audio, in and out. 20 ms is what LiveKit and every telephony
   # stack expect, and it is also how soon a streamed reply can start playing.

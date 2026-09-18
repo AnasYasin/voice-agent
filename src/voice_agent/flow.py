@@ -152,6 +152,12 @@ class Flow:
             raise RuntimeError("call is still running, no result yet")
         return Result(outcome=self._outcome, slots=dict(self.slots))
 
+    def end(self, say: str) -> Turn:
+        """End the call from outside, with a last line. Slots filled so far are
+        kept; the outcome says why it stopped."""
+        self._outcome = "time_limit"
+        return Turn(say=say, state="time_limit", expects_reply=False)
+
     def start(self, **fields: Any) -> Turn:
         """`fields` fill the {placeholders} in the script, e.g. name, date, time."""
         self._fields = fields
@@ -335,6 +341,7 @@ class Conversation:
         self.slots: dict[str, Any] = {}
         self._started = False
         self._ended = False
+        self._outcome = ""
         self._history: list[dict[str, str]] = []
 
     @property
@@ -343,7 +350,7 @@ class Conversation:
 
     @property
     def result(self) -> Result:
-        return Result(outcome="hung_up" if self._ended else "talk", slots={})
+        return Result(outcome=self._outcome or ("hung_up" if self._ended else "talk"), slots={})
 
     def start(self, **fields: Any) -> Turn:
         """Open the call. A fixed greeting is spoken as written. Without one the
@@ -452,6 +459,14 @@ class Conversation:
             self._history.append({"role": "user", "content": said})
         self._history.append({"role": "assistant", "content": reply})
         self._history = self._history[-self.memory_turns * 2 :]
+
+    def end(self, say: str) -> Turn:
+        """End the call from outside, with a last line. The demo's time limit
+        uses this so the line does not simply go dead."""
+        self._ended = True
+        self._outcome = "time_limit"
+        self._history.append({"role": "assistant", "content": say})
+        return Turn(say=say, state="talk", expects_reply=False)
 
     def spoken(self, text: str) -> None:
         """Cut the last reply down to what the caller actually heard.

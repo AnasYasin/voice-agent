@@ -145,6 +145,9 @@ class Session:
         self._tape: Any = None
         self._agent_pending = bytearray()
         self._band: Any = None
+        # Lines to say that did not come from a caller turn. The transport
+        # plays them as soon as it can. Only the time limit uses this so far.
+        self.interjections: asyncio.Queue[Speaking] = asyncio.Queue()
         self._lookahead = int(settings.tts.lookahead_seconds * 1000 / settings.audio.frame_ms)
 
         self.work_dir.mkdir(parents=True, exist_ok=True)
@@ -320,6 +323,14 @@ class Session:
         del self._agent_pending[: len(pcm)]
         self._tape.write_stereo(pcm, agent)
         await self._ears.push(pcm)
+
+    def hang_up(self, say: str) -> None:
+        """End the call with one last line, whatever the flow was doing. The
+        transport picks it up on its next wait and stops once it has played."""
+        if self.finished:
+            return
+        log.info("hanging up: %s", say)
+        self.interjections.put_nowait(self._speaking(self.flow.end(say)))
 
     def played(self, pcm: bytes) -> None:
         """Agent audio, as the transport has just played it. Goes to the right
