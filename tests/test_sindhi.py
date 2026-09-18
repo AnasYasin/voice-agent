@@ -22,7 +22,7 @@ def test_sindhi_loads_on_the_elevenlabs_voice() -> None:
     assert language.name == "سنڌي"
     assert language.stt_language == "snd"
     assert language.tts_provider == "elevenlabs"
-    assert language.tts_voice == "21m00Tcm4TlvDq8ikWAM"
+    assert language.tts_voice == "EXAVITQu4vr4xnSDxMaL"
 
 
 def test_urdu_and_english_still_name_azure() -> None:

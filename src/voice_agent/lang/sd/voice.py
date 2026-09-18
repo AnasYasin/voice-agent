@@ -17,9 +17,12 @@ LOCALE = "sd-PK"
 NAME = "سنڌي"  # what the caller sees on the language toggle
 STT_LANGUAGE = "snd"
 TTS_PROVIDER = "elevenlabs"
-# An ElevenLabs voice id, not a name. Rachel, a premade female voice, until a
-# Sindhi speaker picks one; the model speaks the language whatever the voice.
-TTS_VOICE = "21m00Tcm4TlvDq8ikWAM"
+# An ElevenLabs voice id, not a name. Sarah, a default voice every account has,
+# because the free plan refuses Voice Library voices over the API. She is an
+# American voice speaking Sindhi. The library has female voices by Urdu and
+# Hindi speakers (Reva UT6USLtoAlXHj5k4sOLY, used 16,000 times, is the obvious
+# pick) and any of them needs the Starter plan. Swap the id here, nothing else.
+TTS_VOICE = "EXAVITQu4vr4xnSDxMaL"
 
 # Words the agent expects on the appointment script, plus how a caller ends a
 # call. NEEDS A NATIVE SPEAKER TO CHECK, like the script and the number words.
