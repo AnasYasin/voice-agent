@@ -89,18 +89,16 @@ Nobody sees it. Write for the ear:
 
 
 _TALK_SYSTEM = f"""You are on a live phone call, talking to a real person. There
-is no form to fill in and no question you are waiting on. Just talk to them.
+is no form to fill in. Who you are and what the call is for is set out above,
+and that comes first; everything here is about how to speak, not what to say.
 
 {_SPEECH_RULES}
 
 Do not ask them to repeat themselves and do not chase them for an answer. If
-they said something small, say something small back. Let them lead.
+they said something small, say something small back.
 
-You have already greeted them. Do not greet them again, and do not reintroduce
-yourself unless they ask who you are.
-
-Do not start interviewing them. Asking one natural question back is fine when
-the conversation calls for it. Working through a list of questions is not."""
+You have already opened the call. Do not greet them again, and do not
+reintroduce yourself unless they ask who you are."""
 
 
 _CHAT_SYSTEM = f"""You are on a live phone call, talking to a real person. They
@@ -366,7 +364,13 @@ class ClaudeResponder:
         and they are long. Caching them means the model re-reads only what the
         caller just said, which the caller hears as speed."""
         rules = _CHAT_SYSTEM if asking else _TALK_SYSTEM
-        parts = [rules, extra, f"Your persona:\n{persona}" if persona else ""]
+        # The persona goes first. What the agent is for outranks how it talks,
+        # and a model reads the opening of a prompt as the point of it.
+        parts = [
+            f"Who you are and what this call is for:\n{persona}" if persona else "",
+            rules,
+            extra,
+        ]
         return [
             {
                 "type": "text",

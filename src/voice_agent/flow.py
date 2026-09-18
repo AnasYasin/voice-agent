@@ -297,6 +297,13 @@ class Flow:
             raise ValueError(f"script needs {error} but it was not passed to start()") from None
 
 
+OPENING_CUE = (
+    "The call has just connected and nobody has spoken yet. Say your opening line "
+    "as the person described above would, in one or two short sentences. "
+    "Say who you are and why you are calling."
+)
+
+
 class Conversation:
     """No script, no slots, no questions. Just talk.
 
@@ -339,10 +346,26 @@ class Conversation:
         return Result(outcome="hung_up" if self._ended else "talk", slots={})
 
     def start(self, **fields: Any) -> Turn:
+        """Open the call. A fixed greeting is spoken as written. Without one the
+        model opens in character, which is what a purpose written for one call
+        needs: "How can I help you" is the wrong first line for an agent that
+        was told to confirm an appointment."""
         self._started = True
         if self.greeting:
             self._history.append({"role": "assistant", "content": self.greeting})
-        return Turn(say=self.greeting, state="talk", expects_reply=True)
+            return Turn(say=self.greeting, state="talk", expects_reply=True)
+        return Turn(say="", state="talk", expects_reply=True, stream=self._opening())
+
+    async def _opening(self) -> AsyncIterator[str]:
+        """The model's first line, remembered as its own and nothing else. The
+        cue is not a caller turn, so it never enters the history."""
+        utterance = self.responder.stream(OPENING_CUE, asking="", persona=self.persona, history=[])
+        try:
+            async with aclosing(utterance.__aiter__()) as pieces:
+                async for piece in pieces:
+                    yield piece
+        finally:
+            self._history.append({"role": "assistant", "content": utterance.text.strip()})
 
     def reply(self, said: str = "", key: str = "") -> Turn:
         if not self._started:

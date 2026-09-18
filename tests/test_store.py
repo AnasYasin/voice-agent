@@ -339,3 +339,51 @@ async def test_a_real_english_call_lands_in_postgres(
     assert turns[0]["said"].startswith("Hello Anas.")
     assert turns[1]["heard"], "nothing came back from the recognizer"
     assert call["outcome"] == "done", f"the caller agreed, got {call['outcome']}"
+
+
+@pytest.mark.skipif(not all(os.getenv(key) for key in KEYS), reason="needs all three API keys")
+async def test_a_written_purpose_decides_the_opening_line(tmp_path: Any) -> None:
+    """The demo's purpose box. The persona leads the prompt and there is no
+    fixed greeting, so the model's first line has to be the brief, not "how can
+    I help you"."""
+    from dataclasses import replace
+
+    from voice_agent import llm, stt, tts
+    from voice_agent.demo import compose_persona
+    from voice_agent.language import load as load_language
+    from voice_agent.session import Session
+
+    brief = (
+        "You are Sara from City Dental, calling to confirm tomorrow's 4 PM appointment. "
+        "Ask whether the time still works."
+    )
+    language = load_language("en-US")
+    language = replace(language, persona=compose_persona(brief, language.name, 300), greeting="")
+    voice = tts.build(
+        os.environ["AZURE_SPEECH_KEY"],
+        os.environ["AZURE_SPEECH_REGION"],
+        language.tts_voice,
+        cache_dir=tmp_path / "cache",
+        locale=language.locale,
+    )
+    session = Session(
+        language=language,
+        stt=stt.build("elevenlabs", os.environ["ELEVENLABS_API_KEY"], language.keyterms),
+        tts=voice,
+        extractor=llm.build(os.environ["ANTHROPIC_API_KEY"]),
+        work_dir=tmp_path / "call",
+        responder=llm.build_responder(os.environ["ANTHROPIC_API_KEY"]),
+        conversation=True,
+    )
+
+    await session.open()
+    try:
+        async for _ in session.greet().chunks:
+            pass
+    finally:
+        await session.close()
+
+    opener = session.transcript[0].said
+    print(f"\n  opener: {opener}")
+    assert "help you" not in opener.lower(), opener
+    assert any(word in opener.lower() for word in ("dental", "appointment", "sara")), opener

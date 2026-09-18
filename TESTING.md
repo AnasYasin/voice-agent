@@ -148,10 +148,13 @@ the line in two languages at once.
 The purpose box is the system prompt for that one call. Whatever the visitor
 writes, the demo appends the house rules: it is a calling agent, it speaks the
 chosen language, it keeps replies to a sentence or two, the call has a time
-limit, and it ends the call when asked. Left empty, the pack's own persona in
-`lang/<code>/agent.yaml` runs. The purpose is saved on the call row under
+limit, and it ends the call when asked. The purpose leads the prompt and
+there is no fixed greeting on such a call: the model writes the opening line
+in character. Left empty, the pack's own persona and greeting in
+`lang/<code>/agent.yaml` run. The purpose is saved on the call row under
 `fields`, so a call in Postgres says what it was for. The orb on the page
-pulses while the agent speaks and rings while the caller does.
+follows the audio itself: it grows with the agent's voice and rings with the
+caller's.
 
 It refuses to start without `DEMO_PASSCODE`, on purpose. `DEMO_MAX_CALLS`
 defaults to 3 and `DEMO_CALL_SECONDS` to 300.

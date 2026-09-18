@@ -62,7 +62,8 @@ def build_session(
     """
     language = language_module.load(locale)
     if persona:
-        language = replace(language, persona=persona)
+        # The pack's greeting goes with its persona. The model opens in character.
+        language = replace(language, persona=persona, greeting="")
 
     voice = tts.build(
         require("AZURE_SPEECH_KEY"),

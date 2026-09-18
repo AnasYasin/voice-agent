@@ -679,3 +679,27 @@ def test_silence_never_reaches_a_streaming_model() -> None:
 
     assert turn.stream is None
     assert responder.calls == []
+
+
+async def test_without_a_greeting_the_model_opens_the_call_in_character() -> None:
+    """A purpose written for one call has no fixed greeting. The opener comes
+    from the model, is remembered as the agent's line, and the cue that asked
+    for it never becomes a caller turn."""
+    from voice_agent.flow import Conversation
+
+    responder = StubResponder("Hi, this is City Dental calling about tomorrow.")
+    call = Conversation(responder, persona="You confirm dental appointments.", greeting="")
+
+    turn = call.start()
+    spoken = await drain(turn)
+
+    assert turn.say == ""
+    assert spoken == "Hi, this is City Dental calling about tomorrow."
+    assert call._history == [
+        {"role": "assistant", "content": "Hi, this is City Dental calling about tomorrow."}
+    ]
+    from voice_agent.flow import OPENING_CUE
+
+    said, asking, persona = responder.calls[-1]
+    assert (said, asking, persona) == (OPENING_CUE, "", "You confirm dental appointments.")
+    assert responder.histories[-1] == [], "the opener starts from a clean history"
