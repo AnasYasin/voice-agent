@@ -387,3 +387,23 @@ async def test_a_written_purpose_decides_the_opening_line(tmp_path: Any) -> None
     print(f"\n  opener: {opener}")
     assert "help you" not in opener.lower(), opener
     assert any(word in opener.lower() for word in ("dental", "appointment", "sara")), opener
+
+
+@pytest.mark.skipif(not os.getenv("ELEVENLABS_API_KEY"), reason="needs the ElevenLabs key")
+async def test_a_real_sindhi_line_is_spoken_by_elevenlabs(tmp_path: Any) -> None:
+    """Skips, with the reason, while the key lacks the text_to_speech permission."""
+    from voice_agent import tts
+    from voice_agent.language import load as load_language
+
+    language = load_language("sd-PK")
+    voice = tts.build_elevenlabs(
+        os.environ["ELEVENLABS_API_KEY"], language.tts_voice, cache_dir=None
+    )
+    try:
+        chunks = [chunk async for chunk in voice.stream(language.greeting)]
+    except Exception as error:
+        if "text_to_speech" in str(error) or "missing_permissions" in str(error):
+            pytest.skip("the ElevenLabs key has no text_to_speech permission yet")
+        raise
+
+    assert sum(len(chunk) for chunk in chunks) > 8000, "less than half a second of audio"

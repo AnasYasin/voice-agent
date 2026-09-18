@@ -1,0 +1,46 @@
+# Component 6, in Sindhi. Same states, slots and keypad options as the Urdu
+# script, so a result row looks the same whichever language the call ran in.
+#
+# NEEDS A NATIVE SPEAKER TO CHECK every line before a real caller hears it.
+
+name: confirm_appointment
+language: sd-PK
+
+consent: >-
+  سلام. هي هڪ خودڪار ڪال آهي ۽ معيار لاءِ رڪارڊ ٿي رهي آهي.
+
+states:
+  - id: confirm_appointment
+    ask: >-
+      سلام {name}. توهان جي ملاقات {date} تي {time} وڳي مقرر آهي.
+      ڇا هي وقت توهان لاءِ ٺيڪ آهي؟
+    slot: confirmed
+    type: boolean
+    dtmf: {"1": true, "2": false, "3": "repeat"}
+    on_true: done
+    on_false: reschedule
+    on_fail: handoff
+    max_retries: 2
+
+  - id: reschedule
+    ask: مهرباني ڪري ڪو ٻيو ڏينهن يا وقت ٻڌايو جيڪو توهان لاءِ مناسب هجي.
+    slot: preferred_time
+    type: datetime
+    on_true: done
+    on_fail: handoff
+    max_retries: 2
+
+  - id: handoff
+    say: مان توهان جي ڳالهه اسان جي نمائندي سان ڪرايان ٿي. مهرباني.
+    terminal: true
+
+  - id: done
+    say: مهرباني. توهان جو ڏينهن سٺو گذري.
+    terminal: true
+
+extraction_guidance: >-
+  The caller may answer in Sindhi script, Roman Sindhi, Urdu or English, or a
+  mix. Treat "ها", "جي ها", "ٺيڪ آهي", "بلڪل", "haan", "theek aa" as yes, and
+  "نه", "na", "no" as no. Times may arrive as "ٽي وڳي", "3 wagi" or "three
+  o'clock" and all mean 15:00 unless the caller says morning. Return unclear
+  rather than guessing.

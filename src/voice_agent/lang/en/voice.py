@@ -13,6 +13,7 @@ from voice_agent.lang.en.normalize import EnglishNormalizer
 LOCALE = "en-US"
 NAME = "English"  # what the caller sees on the language toggle
 STT_LANGUAGE = "en"
+TTS_PROVIDER = "azure"
 TTS_VOICE = "en-US-JennyNeural"
 
 # Words the agent expects to hear on the appointment script, plus the ways a

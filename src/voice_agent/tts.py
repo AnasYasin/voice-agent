@@ -28,6 +28,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import wave
+from array import array
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -219,6 +221,81 @@ class AzureTTS:
             synthesizer.stop_speaking_async()
 
 
+# G.711 µ-law to 16-bit PCM. ElevenLabs streams 8 kHz only as µ-law, which is
+# what a phone line carries anyway, so decoding it here is the whole conversion.
+def _ulaw_table() -> list[int]:
+    table = []
+    for byte in range(256):
+        value = ~byte & 0xFF
+        exponent = (value >> 4) & 0x07
+        mantissa = value & 0x0F
+        sample = (((mantissa << 3) + 0x84) << exponent) - 0x84
+        table.append(-sample if value & 0x80 else sample)
+    return table
+
+
+_ULAW = _ulaw_table()
+
+
+def ulaw_to_pcm(data: bytes) -> bytes:
+    samples = array("h", (_ULAW[byte] for byte in data))
+    return samples.tobytes()
+
+
+class ElevenLabsTTS:
+    """A voice from ElevenLabs, for languages Azure does not speak.
+
+    Same two ways out as Azure. `synthesize` fetches 16 kHz PCM and writes a
+    WAV for the cache. `stream` fetches 8 kHz µ-law, the line's rate, and hands
+    back 16-bit PCM chunks as they arrive. The model reads the language off the
+    text itself; there is no locale to pin.
+    """
+
+    name = "elevenlabs"
+
+    def __init__(
+        self, api_key: str, voice: str, model: str | None = None, client: Any = None
+    ) -> None:
+        from elevenlabs.client import AsyncElevenLabs, ElevenLabs
+
+        self.voice = voice
+        self.model = model or settings.tts.elevenlabs_model
+        self.sample_rate = 16000
+        self.stream_rate = settings.audio.sample_rate
+        if self.stream_rate != 8000:
+            raise ValueError(f"ElevenLabs streams 8 kHz µ-law only, not {self.stream_rate} Hz")
+        self._client = client or ElevenLabs(api_key=api_key)
+        self._async_client = client or AsyncElevenLabs(api_key=api_key)
+
+    def synthesize(self, text: str, dst: Path) -> Speech:
+        """Whole line to a 16 kHz WAV. `to_telephone` takes it from there."""
+        log.info("[%s] synthesizing %d chars as %s", self.name, len(text), self.voice)
+        pcm = b"".join(
+            self._client.text_to_speech.convert(
+                self.voice, text=text, model_id=self.model, output_format="pcm_16000"
+            )
+        )
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(dst), "wb") as tape:
+            tape.setnchannels(1)
+            tape.setsampwidth(2)
+            tape.setframerate(self.sample_rate)
+            tape.writeframes(pcm)
+        return Speech(path=dst, voice=self.voice, cached=False)
+
+    async def stream(self, text: str) -> AsyncIterator[bytes]:
+        """Raw PCM at the line's rate, a chunk at a time, while the voice is
+        still being made. Closing the iterator early drops the request."""
+        if not text.strip():
+            raise ValueError("nothing to synthesize, text is empty")
+        log.info("[%s] streaming %d chars as %s", self.name, len(text), self.voice)
+        chunks = self._async_client.text_to_speech.stream(
+            self.voice, text=text, model_id=self.model, output_format="ulaw_8000"
+        )
+        async for chunk in chunks:
+            yield ulaw_to_pcm(chunk)
+
+
 class CachedTTS:
     """Component 11. Wraps any TextToSpeech and keeps results on disk.
 
@@ -270,6 +347,14 @@ def build(
 ):
     """Build the Azure voice, wrapped in the cache unless `cache_dir` is None."""
     tts = AzureTTS(api_key, region, voice, locale=locale)
+    if cache_dir is None:
+        return tts
+    return CachedTTS(tts, cache_dir)
+
+
+def build_elevenlabs(api_key: str, voice: str, cache_dir: Path | None = None):
+    """Build the ElevenLabs voice, wrapped in the cache unless `cache_dir` is None."""
+    tts = ElevenLabsTTS(api_key, voice)
     if cache_dir is None:
         return tts
     return CachedTTS(tts, cache_dir)

@@ -12,6 +12,7 @@ from voice_agent.lang.ur.normalize import UrduNormalizer
 LOCALE = "ur-PK"
 NAME = "اردو"  # what the caller sees on the language toggle
 STT_LANGUAGE = "ur"
+TTS_PROVIDER = "azure"
 # Female. An Indian English Dragon HD voice speaking Urdu as a secondary
 # locale, which carries a South Asian accent the ur-PK voices do not.
 # Azure has only four native Urdu voices and all are the older Neural tier:

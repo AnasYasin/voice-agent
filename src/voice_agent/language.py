@@ -63,6 +63,7 @@ class Language:
     name: str
     stt_language: str
     tts_voice: str
+    tts_provider: str
     keyterms: list[str]
     normalizer: Any
     script: Script
@@ -115,6 +116,7 @@ def load(locale: str | None = None) -> Language:
         name=manifest.NAME,
         stt_language=manifest.STT_LANGUAGE,
         tts_voice=manifest.TTS_VOICE,
+        tts_provider=manifest.TTS_PROVIDER,
         keyterms=list(manifest.KEYTERMS),
         normalizer=manifest.NORMALIZER(),
         script=Script.load(script_path),

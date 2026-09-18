@@ -12,8 +12,8 @@ browser. See [TESTING.md](TESTING.md) to run it.
 |---|---|
 | Orchestration | LiveKit, self-hosted |
 | Telephony | Asterisk + GSM gateway, licensed SIP trunk later |
-| STT | ElevenLabs Scribe, compared against Deepgram Nova-3 |
-| TTS | Azure `en-IN-Neerja:DragonHDLatestNeural` for Urdu, `en-US-JennyNeural` for English, fixed lines cached |
+| STT | ElevenLabs Scribe for all three languages, compared against Deepgram Nova-3 for Urdu |
+| TTS | Azure for Urdu and English, ElevenLabs `eleven_v3` for Sindhi, which Azure cannot speak. Fixed lines cached |
 | LLM | Claude Sonnet 5, slot extraction only |
 | Storage | Postgres for every call's transcript, searchable. S3 for the stereo recording |
 
@@ -62,7 +62,8 @@ src/voice_agent/
   transport.py  livekit browser (SIP and PSTN later)
   main.py       process startup, the only module reading env
   lang/ur/      Urdu: normalisation, keyterms, sentence ends, call script, persona
-  lang/en/      English, the same five files. The demo page offers both
+  lang/en/      English, the same five files
+  lang/sd/      Sindhi, on the ElevenLabs voice. Lines need a native speaker's check
 web/            browser test client
 eval/           Phase 0 accuracy harness
 telephony/      Asterisk config

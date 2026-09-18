@@ -64,6 +64,13 @@ tts:
   # that audio is cheap.
   lookahead_seconds: 3.0
 
+  # The ElevenLabs voice model, for languages Azure has no voice for. Sindhi is
+  # the first. eleven_v3 lists Sindhi and Urdu among 70+ languages; the older
+  # multilingual and flash models do not. Roughly eleven times Azure's price
+  # per character, which the cache absorbs on scripted lines and talk mode pays
+  # on every sentence. See voice_agent_costs.md.
+  elevenlabs_model: eleven_v3
+
 evaluation:
   # A line worse than this is flagged in the roundtrip report. It is a reading
   # aid, not the go/no-go number. The gate is slot accuracy on real recordings.

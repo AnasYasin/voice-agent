@@ -65,13 +65,21 @@ def build_session(
         # The pack's greeting goes with its persona. The model opens in character.
         language = replace(language, persona=persona, greeting="")
 
-    voice = tts.build(
-        require("AZURE_SPEECH_KEY"),
-        require("AZURE_SPEECH_REGION"),
-        language.tts_voice,
-        cache_dir=Path(os.getenv("TTS_CACHE_DIR", "./audio_cache")),
-        locale=language.locale,
-    )
+    cache_dir = Path(os.getenv("TTS_CACHE_DIR", "./audio_cache"))
+    if language.tts_provider == "elevenlabs":
+        # Azure has no voice for this language. The ElevenLabs key needs the
+        # text_to_speech permission as well as speech_to_text.
+        voice = tts.build_elevenlabs(
+            require("ELEVENLABS_API_KEY"), language.tts_voice, cache_dir=cache_dir
+        )
+    else:
+        voice = tts.build(
+            require("AZURE_SPEECH_KEY"),
+            require("AZURE_SPEECH_REGION"),
+            language.tts_voice,
+            cache_dir=cache_dir,
+            locale=language.locale,
+        )
     provider = os.getenv("STT_PROVIDER", "elevenlabs")
 
     return Session(
