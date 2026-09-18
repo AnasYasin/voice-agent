@@ -33,8 +33,9 @@
     border: 0; border-radius: .35rem; cursor: pointer; background: transparent; color: inherit;
   }
   #languages button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .code-label { font-size: .8rem; font-weight: 600; margin: 0 .1rem 0 .4rem; white-space: nowrap; }
   #passcode {
-    width: 8.5rem; padding: .35rem .6rem; font: inherit; font-size: .8rem; color: inherit;
+    width: 7.5rem; padding: .35rem .6rem; font: inherit; font-size: .8rem; color: inherit;
     border: 1px solid var(--line); border-radius: .5rem; background: transparent;
   }
 
@@ -88,7 +89,8 @@
   </div>
   <div class="controls">
     <div id="languages" role="group" aria-label="Language"></div>
-    <input id="passcode" type="password" autocomplete="off" placeholder="Access code" aria-label="Access code" />
+    <label for="passcode" class="code-label">Access code</label>
+    <input id="passcode" type="password" autocomplete="off" placeholder="••••••" />
   </div>
 </header>
 
