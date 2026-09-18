@@ -18,7 +18,7 @@
   html, body { height: 100%; }
   body {
     margin: 0; font: 15px/1.5 system-ui, sans-serif;
-    display: grid; grid-template-rows: auto auto 1fr; align-content: start;
+    display: grid; grid-template-rows: auto 1fr;
     padding: max(.75rem, env(safe-area-inset-top)) 1rem max(.75rem, env(safe-area-inset-bottom));
     gap: .5rem;
   }
@@ -40,7 +40,9 @@
   }
 
   /* Middle: the orb, sized to whatever is left, never forcing a scroll. */
-  main { display: flex; align-items: center; justify-content: center; padding: 1.25rem 0 1rem; }
+  /* The orb and the form sit together in the middle of what is left under the bar. */
+  .stage { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1.25rem; min-height: 0; padding-bottom: 6vh; }
+  main { display: flex; align-items: center; justify-content: center; }
   #orb {
     --size: clamp(4.5rem, 16vmin, 7.5rem);
     width: var(--size); height: var(--size); border-radius: 50%;
@@ -94,6 +96,7 @@
   </div>
 </header>
 
+<div class="stage">
 <main>
   <div id="orb" class="off" aria-hidden="true"></div>
 </main>
@@ -109,6 +112,7 @@
     <p id="live" aria-live="polite"></p>
   </div>
 </footer>
+</div>
 
 <script type="module">
 import {
