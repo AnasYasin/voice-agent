@@ -9,13 +9,26 @@ what a real call will sound like.
 
 Used in both directions: incoming caller audio before STT, and outgoing agent
 audio after TTS.
+
+Two ways in, for two shapes of work:
+
+  to_telephone()  a finished file to a finished file. ffmpeg. This is what the
+                  campaign path and every accuracy run use.
+  Telephone()     one chunk at a time, for audio that does not exist yet. A
+                  subprocess costs more than the band-limiting does, and there
+                  is no finished file to hand it anyway.
+
+Both apply the same band, so a streamed reply and a cached one sound alike.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
 import subprocess
+import wave
+from array import array
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -112,3 +125,132 @@ def _run(args: list[str]) -> str:
         raise RuntimeError(f"{args[0]} failed:\n{error.stderr.strip()}") from None
 
     return result.stdout
+
+
+class Telephone:
+    """The streaming twin of `to_telephone`. Call it with 16-bit mono PCM.
+
+    Two Butterworth biquads, high-pass then low-pass, carrying their filter
+    state between chunks. State is what makes this a filter rather than a
+    per-chunk effect: reset it between chunks and every boundary clicks.
+
+    One instance per stream, never shared. Resampling is not done here, so the
+    audio must already be at the configured rate.
+    """
+
+    def __init__(self, config: AudioConfig | None = None) -> None:
+        config = config or settings.audio
+        self._stages = (
+            _highpass(config.band_low_hz, config.sample_rate),
+            _lowpass(config.band_high_hz, config.sample_rate),
+        )
+
+    def __call__(self, pcm: bytes) -> bytes:
+        samples = array("h")
+        samples.frombytes(pcm)
+        for stage in self._stages:
+            stage.run(samples)
+        return samples.tobytes()
+
+
+class Tape:
+    """A WAV written while it is still being recorded or played.
+
+    Used by the live call path, where there is no finished file to convert and
+    the audio has to reach the caller before it reaches the disk.
+
+    Two channels give the call recording: the caller on the left, the agent on
+    the right, one `write` per frame with both sides' samples for that moment.
+    """
+
+    def __init__(self, path: Path, config: AudioConfig | None = None, channels: int = 1) -> None:
+        self.path = path
+        self.channels = channels
+        self._rate = (config or settings.audio).sample_rate
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._wave = wave.open(str(path), "wb")
+        self._wave.setnchannels(channels)
+        self._wave.setsampwidth(2)  # s16
+        self._wave.setframerate(self._rate)
+
+    def write(self, pcm: bytes) -> None:
+        self._wave.writeframes(pcm)
+
+    def write_stereo(self, left: bytes, right: bytes) -> None:
+        """One frame of both channels. The shorter side is padded with silence."""
+        length = max(len(left), len(right))
+        left_samples = array("h")
+        left_samples.frombytes(left.ljust(length, b"\x00"))
+        right_samples = array("h")
+        right_samples.frombytes(right.ljust(length, b"\x00"))
+        interleaved = array("h", bytes(length * 2))
+        interleaved[0::2] = left_samples
+        interleaved[1::2] = right_samples
+        self._wave.writeframes(interleaved.tobytes())
+
+    def close(self) -> None:
+        self._wave.close()
+
+    def __enter__(self) -> Tape:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
+
+def pcm(path: Path) -> bytes:
+    """The samples in a WAV, without the header. What a transport can play."""
+    with wave.open(str(path), "rb") as source:
+        return source.readframes(source.getnframes())
+
+
+class _Biquad:
+    """One second-order section, direct form II transposed."""
+
+    __slots__ = ("a1", "a2", "b0", "b1", "b2", "z1", "z2")
+
+    def __init__(self, b0: float, b1: float, b2: float, a1: float, a2: float) -> None:
+        self.b0, self.b1, self.b2, self.a1, self.a2 = b0, b1, b2, a1, a2
+        self.z1 = self.z2 = 0.0
+
+    def run(self, samples: array) -> None:
+        b0, b1, b2, a1, a2 = self.b0, self.b1, self.b2, self.a1, self.a2
+        z1, z2 = self.z1, self.z2
+        for index, sample in enumerate(samples):
+            # The state carries the unrounded value. Feeding the clipped
+            # integer back would let rounding error accumulate into a drift.
+            out = b0 * sample + z1
+            z1 = b1 * sample - a1 * out + z2
+            z2 = b2 * sample - a2 * out
+            samples[index] = -32768 if out < -32768 else 32767 if out > 32767 else int(out)
+        self.z1, self.z2 = z1, z2
+
+
+# 1/sqrt(2) is the Butterworth Q, the flattest passband a single section gives.
+_Q = 2**-0.5
+
+
+def _highpass(cutoff: int, rate: int) -> _Biquad:
+    w0 = 2 * math.pi * cutoff / rate
+    cosine, alpha = math.cos(w0), math.sin(w0) / (2 * _Q)
+    a0 = 1 + alpha
+    return _Biquad(
+        b0=(1 + cosine) / 2 / a0,
+        b1=-(1 + cosine) / a0,
+        b2=(1 + cosine) / 2 / a0,
+        a1=-2 * cosine / a0,
+        a2=(1 - alpha) / a0,
+    )
+
+
+def _lowpass(cutoff: int, rate: int) -> _Biquad:
+    w0 = 2 * math.pi * cutoff / rate
+    cosine, alpha = math.cos(w0), math.sin(w0) / (2 * _Q)
+    a0 = 1 + alpha
+    return _Biquad(
+        b0=(1 - cosine) / 2 / a0,
+        b1=(1 - cosine) / a0,
+        b2=(1 - cosine) / 2 / a0,
+        a1=-2 * cosine / a0,
+        a2=(1 - alpha) / a0,
+    )

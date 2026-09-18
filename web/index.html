@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Voice agent</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --accent: #2563eb;
+    --accent-soft: color-mix(in srgb, var(--accent) 22%, transparent);
+    --line: color-mix(in srgb, currentColor 16%, transparent);
+    --muted: color-mix(in srgb, currentColor 58%, transparent);
+    --agent: 0;   /* 0..1, how loud the agent is right now */
+    --caller: 0;  /* 0..1, how loud the caller is right now */
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; font: 15px/1.5 system-ui, sans-serif;
+    display: grid; grid-template-rows: auto 1fr;
+    padding: max(.75rem, env(safe-area-inset-top)) 1rem max(.75rem, env(safe-area-inset-bottom));
+    gap: .5rem;
+  }
+
+  /* Top bar: title left, the small controls right. */
+  header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+  header h1 { font-size: 1rem; margin: 0; font-weight: 650; }
+  .controls { display: flex; align-items: center; gap: .5rem; }
+  #languages { display: flex; gap: .15rem; padding: .15rem; border: 1px solid var(--line); border-radius: .5rem; }
+  #languages button {
+    padding: .3rem .65rem; font: inherit; font-size: .8rem; font-weight: 600;
+    border: 0; border-radius: .35rem; cursor: pointer; background: transparent; color: inherit;
+  }
+  #languages button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .code-label { font-size: .8rem; font-weight: 600; margin: 0 .1rem 0 .4rem; white-space: nowrap; }
+  #passcode {
+    width: 7.5rem; padding: .35rem .6rem; font: inherit; font-size: .8rem; color: inherit;
+    border: 1px solid var(--line); border-radius: .5rem; background: transparent;
+  }
+
+  /* Middle: the orb, sized to whatever is left, never forcing a scroll. */
+  /* The orb and the form sit together in the middle of what is left under the bar. */
+  .stage { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1.25rem; min-height: 0; padding-bottom: 6vh; }
+  main { display: flex; align-items: center; justify-content: center; }
+  #orb {
+    --size: clamp(4.5rem, 16vmin, 7.5rem);
+    width: var(--size); height: var(--size); border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #60a5fa, var(--accent) 60%, #1e3a8a);
+    /* The agent's level grows the orb; the caller's level grows the ring. */
+    transform: scale(calc(1 + var(--agent) * .28));
+    box-shadow:
+      0 0 0 calc(var(--caller) * 2.2rem) var(--accent-soft),
+      0 0 calc(1rem + var(--agent) * 3rem) calc(var(--agent) * 1rem) color-mix(in srgb, var(--accent) 45%, transparent);
+    transition: transform .08s linear, box-shadow .08s linear, filter .4s ease;
+    animation: breathe 4s ease-in-out infinite;
+  }
+  #orb.off { filter: grayscale(.75) brightness(.8); }
+  #orb.on { animation: none; }
+  @keyframes breathe { 0%, 100% { scale: 1; } 50% { scale: 1.035; } }
+  .title { display: flex; flex-direction: column; gap: .05rem; }
+  #status { margin: 0; font-size: .8rem; color: var(--muted); }
+  #live { margin: 0; font-size: .75rem; color: var(--muted); align-self: center; white-space: nowrap; }
+
+  /* Bottom: the purpose, which is the point, and the one button. */
+  footer { display: flex; flex-direction: column; gap: .45rem; max-width: 40rem; width: 100%; margin: 0 auto; }
+  footer label { font-weight: 600; font-size: .8rem; }
+  textarea {
+    width: 100%; padding: .65rem .8rem; font: inherit; color: inherit; line-height: 1.45;
+    border: 1px solid var(--line); border-radius: .6rem; background: transparent;
+    height: clamp(4rem, 14vh, 7rem); resize: none;
+  }
+  textarea:focus, #passcode:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+  .help { font-size: .75rem; color: var(--muted); margin: 0; }
+  .actions { display: flex; gap: .75rem; align-items: center; }
+  .actions button {
+    padding: .55rem 1.1rem; font: inherit; font-size: .9rem; font-weight: 650;
+    border: 0; border-radius: .5rem; cursor: pointer; background: var(--accent); color: #fff;
+  }
+  #hangup { background: transparent; color: inherit; border: 1px solid var(--line); }
+  button:disabled, textarea:disabled, input:disabled { opacity: .45; cursor: not-allowed; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title">
+    <h1>Voice agent</h1>
+    <p id="status"></p>
+  </div>
+  <div class="controls">
+    <div id="languages" role="group" aria-label="Language"></div>
+    <label for="passcode" class="code-label">Access code</label>
+    <input id="passcode" type="password" autocomplete="off" placeholder="••••••" />
+  </div>
+</header>
+
+<div class="stage">
+<main>
+  <div id="orb" class="off" aria-hidden="true"></div>
+</main>
+
+<footer>
+  <label for="purpose">What is this agent for?</label>
+  <textarea id="purpose" maxlength="2000"
+    placeholder="Write the purpose of this voice agent as a system prompt."></textarea>
+  <p class="help">The basic rules are added for you: that it is a calling agent, that it keeps answers short, and the time limit. Empty means the default agent.</p>
+  <div class="actions">
+    <button id="go" type="button">Connect and talk</button>
+    <button id="hangup" type="button" hidden>Hang up</button>
+    <p id="live" aria-live="polite"></p>
+  </div>
+</footer>
+</div>
+
+<script type="module">
+import {
+  Room, RoomEvent, createLocalAudioTrack,
+} from 'https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.esm.mjs';
+
+const root = document.documentElement;
+const orb = document.getElementById('orb');
+const status = document.getElementById('status');
+const button = document.getElementById('go');
+const hangup = document.getElementById('hangup');
+const passcode = document.getElementById('passcode');
+const purpose = document.getElementById('purpose');
+const toggle = document.getElementById('languages');
+const say = (text) => { status.textContent = text; };
+
+// The microphone needs a secure context. Say so plainly, because the failure
+// otherwise surfaces as an undefined getUserMedia deep inside connect, and on
+// a shared link the person reading it is not the person who deployed it.
+if (!window.isSecureContext || !navigator.mediaDevices) {
+  say('This page needs HTTPS to use the microphone.');
+  button.disabled = true;
+}
+
+passcode.addEventListener('keydown', (e) => { if (e.key === 'Enter') button.click(); });
+
+// The languages come from the server, one button each, so a new pack under
+// lang/ shows up here without touching this page.
+let chosen = null;
+let chosenName = '';
+function pick(locale, name) {
+  chosen = locale;
+  chosenName = name;
+  for (const segment of toggle.children) {
+    segment.setAttribute('aria-pressed', String(segment.dataset.locale === locale));
+  }
+}
+async function loadLanguages() {
+  try {
+    const r = await fetch('/api/languages', { cache: 'no-store' });
+    const body = await r.json();
+    toggle.replaceChildren();
+    for (const { locale, name } of body.languages) {
+      const segment = document.createElement('button');
+      segment.type = 'button';
+      segment.textContent = name;
+      segment.dataset.locale = locale;
+      segment.onclick = () => pick(locale, name);
+      toggle.append(segment);
+    }
+    const first = body.languages.find((l) => l.locale === body.default) || body.languages[0];
+    pick(first.locale, first.name);
+  } catch {
+    say('Could not reach the server.');
+    button.disabled = true;
+  }
+}
+loadLanguages();
+
+// Live call count, polled from the same /healthz the box uses. Best effort.
+const live = document.getElementById('live');
+async function refreshLive() {
+  try {
+    const r = await fetch('/healthz', { cache: 'no-store' });
+    const { in_flight, busy } = await r.json();
+    const count = Number(in_flight) || 0;
+    live.textContent = count === 0
+      ? 'No one is on a call right now.'
+      : `${count} ${count === 1 ? 'person is' : 'people are'} on a call right now${busy ? ', all lines full' : ''}.`;
+  } catch { /* keep the last known line */ }
+}
+refreshLive();
+setInterval(refreshLive, 4000);
+
+// The orb follows the actual audio, not the server's speaker flags, so it
+// moves with every syllable. One analyser per side, read every frame.
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+const meters = { agent: null, caller: null };
+function meter(mediaStreamTrack) {
+  const source = audioContext.createMediaStreamSource(new MediaStream([mediaStreamTrack]));
+  const analyser = audioContext.createAnalyser();
+  analyser.fftSize = 512;
+  source.connect(analyser);
+  const samples = new Float32Array(analyser.fftSize);
+  return () => {
+    analyser.getFloatTimeDomainData(samples);
+    let sum = 0;
+    for (const sample of samples) sum += sample * sample;
+    return Math.sqrt(sum / samples.length);
+  };
+}
+const smooth = { agent: 0, caller: 0 };
+function animate() {
+  for (const side of ['agent', 'caller']) {
+    const raw = meters[side] ? Math.min(1, meters[side]() * 9) : 0;
+    // Fast up, slower down, so a word lands at once and fades rather than flickers.
+    smooth[side] = raw > smooth[side] ? raw : smooth[side] * 0.85;
+    root.style.setProperty(`--${side}`, smooth[side].toFixed(3));
+  }
+  requestAnimationFrame(animate);
+}
+animate();
+
+function setForm(locked) {
+  passcode.disabled = purpose.disabled = locked;
+  for (const segment of toggle.children) segment.disabled = locked;
+  button.hidden = locked;
+  hangup.hidden = !locked;
+}
+
+let room = null;
+hangup.onclick = () => room?.disconnect();
+
+button.onclick = async () => {
+  const code = passcode.value.trim();
+  if (!code) { passcode.focus(); return say('Enter the access code, top right.'); }
+  if (!chosen) return say('Pick a language first.');
+
+  button.disabled = true;
+  say('Connecting…');
+  audioContext.resume();
+
+  // The token is fetched, never pasted. The server mints one per visitor and
+  // starts an agent for that room, in the chosen language and with the
+  // purpose written below, before answering.
+  let url, token;
+  try {
+    const response = await fetch('/api/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ passcode: code, language: chosen, purpose: purpose.value }),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      say(body.error || 'Could not start the call.');
+      button.disabled = false;
+      return;
+    }
+    ({ url, token } = body);
+  } catch (error) {
+    say('Could not reach the server.');
+    button.disabled = false;
+    return;
+  }
+
+  room = new Room({ adaptiveStream: false, dynacast: false });
+
+  // The agent speaks at 8 kHz on purpose. Play it back untouched so the demo
+  // sounds like the phone call it is standing in for.
+  room.on(RoomEvent.TrackSubscribed, (track) => {
+    if (track.kind === 'audio') {
+      track.attach().play?.();
+      meters.agent = meter(track.mediaStreamTrack);
+      say(`Connected. Answer in ${chosenName}.`);
+    }
+  });
+  room.on(RoomEvent.Disconnected, () => {
+    say('Call ended.');
+    orb.className = 'off';
+    meters.agent = meters.caller = null;
+    setForm(false);
+    button.disabled = false;
+    room = null;
+  });
+
+  try {
+    await room.connect(url, token);
+
+    // Browser mics default to 48 kHz with noise suppression and AGC. Those
+    // clean up the audio in ways a real phone line never would, so leave the
+    // signal alone and let the agent band-limit it.
+    const mic = await createLocalAudioTrack({
+      echoCancellation: true,
+      noiseSuppression: false,
+      autoGainControl: false,
+    });
+    await room.localParticipant.publishTrack(mic);
+    meters.caller = meter(mic.mediaStreamTrack);
+    orb.className = 'on';
+    setForm(true);
+    say(`Connected. Wait for the agent to speak, then reply in ${chosenName}.`);
+  } catch (error) {
+    say('Failed: ' + error.message);
+    button.disabled = false;
+  }
+};
+</script>
+</body>
+</html>

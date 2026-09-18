@@ -5,13 +5,16 @@ Test audio is generated on the fly, so there are no sample files to commit.
 
 from __future__ import annotations
 
+import math
 import shutil
 import subprocess
+import wave
+from array import array
 from pathlib import Path
 
 import pytest
 
-from voice_agent.audio import probe, to_telephone
+from voice_agent.audio import Tape, Telephone, pcm, probe, to_telephone
 from voice_agent.config import settings
 
 pytestmark = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
@@ -120,3 +123,99 @@ def test_corrupt_source_raises_readable_error(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="ffmpeg failed"):
         to_telephone(src, tmp_path / "out.wav")
+
+
+# --- the streaming filter ---
+#
+# Pure Python, no subprocess and no file. It has to land on the same band as
+# to_telephone, or a caller hears the agent change voice between a cached
+# script line and an answer it is making up.
+
+
+def tone(hz: int, seconds: float = 0.5, rate: int | None = None) -> bytes:
+    """A pure tone as 16-bit PCM, the shape a synthesiser hands back."""
+    rate = rate or settings.audio.sample_rate
+    samples = array(
+        "h",
+        (int(12000 * math.sin(2 * math.pi * hz * n / rate)) for n in range(int(rate * seconds))),
+    )
+    return samples.tobytes()
+
+
+def loudness(pcm: bytes) -> float:
+    """Root mean square of a PCM buffer. Not dB, just something to compare."""
+    samples = array("h")
+    samples.frombytes(pcm)
+    return (sum(float(s) * s for s in samples) / len(samples)) ** 0.5
+
+
+def test_a_tone_inside_the_band_survives() -> None:
+    passed = Telephone()(tone(1000))
+
+    assert loudness(passed) > 0.7 * loudness(tone(1000))
+
+
+def test_a_tone_below_the_band_is_cut() -> None:
+    """The low rumble a phone line does not carry."""
+    passed = Telephone()(tone(80))
+
+    assert loudness(passed) < 0.3 * loudness(tone(80))
+
+
+def test_the_filter_carries_its_state_between_chunks() -> None:
+    """Reset it per chunk and every chunk boundary clicks, which is exactly
+    what a streamed reply is made of."""
+    whole = tone(1000)
+    step = len(whole) // 8
+
+    chunked = Telephone()
+    piecewise = b"".join(chunked(whole[at : at + step]) for at in range(0, len(whole), step))
+
+    assert piecewise == Telephone()(whole)
+
+
+def test_filtering_does_not_change_the_length() -> None:
+    """A filter that dropped or added samples would drift the playback clock."""
+    pcm = tone(1000)
+
+    assert len(Telephone()(pcm)) == len(pcm)
+
+
+# --- recording while playing ---
+
+
+def test_a_tape_is_a_readable_wav(tmp_path: Path) -> None:
+    with Tape(tmp_path / "nested" / "said.wav") as tape:
+        tape.write(tone(440, seconds=0.25))
+
+    with wave.open(str(tmp_path / "nested" / "said.wav")) as handle:
+        assert handle.getnchannels() == 1
+        assert handle.getsampwidth() == 2
+        assert handle.getframerate() == settings.audio.sample_rate
+        assert handle.getnframes() == int(settings.audio.sample_rate * 0.25)
+
+
+def test_pcm_reads_back_what_the_tape_wrote(tmp_path: Path) -> None:
+    written = tone(440, seconds=0.25)
+    with Tape(tmp_path / "said.wav") as tape:
+        tape.write(written)
+
+    assert pcm(tmp_path / "said.wav") == written
+
+
+def test_a_stereo_tape_interleaves_left_and_right(tmp_path: Path) -> None:
+    """Caller left, agent right, sample by sample. The shorter side is padded
+    with silence so a frame with nobody speaking on one side still lines up."""
+    import wave
+    from array import array
+
+    from voice_agent.audio import Tape
+
+    with Tape(tmp_path / "call.wav", channels=2) as tape:
+        tape.write_stereo(array("h", [1, 2, 3]).tobytes(), array("h", [9]).tobytes())
+
+    with wave.open(str(tmp_path / "call.wav")) as recorded:
+        assert recorded.getnchannels() == 2
+        samples = array("h", recorded.readframes(recorded.getnframes()))
+
+    assert list(samples) == [1, 9, 2, 0, 3, 0]

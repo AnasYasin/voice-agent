@@ -21,10 +21,30 @@ audio:
   # pcm_mulaw is closer to what a GSM gateway actually delivers.
   codec: pcm_s16le
 
+  # How much silence ends a caller's turn. Every millisecond here is dead
+  # air the caller sits through before the agent starts thinking. Too low
+  # and it cuts people off mid-sentence.
+  #
+  # Streaming STT transcribes while they are still talking, so this is now
+  # the only part of the wait that is still real.
+  #
+  # Was 0.25 from 26 Aug to 18 Sep 2026. Six real calls that day, in both
+  # languages, show turns ending mid-phrase at natural pauses: "and we bought
+  # some cheese and", "وہاں پہ". The agent then answers a fragment and talks
+  # over the rest. Half a second costs a quarter second per turn and stops it.
+  vad_silence_seconds: 0.5
+
+  # One frame of audio, in and out. 20 ms is what LiveKit and every telephony
+  # stack expect, and it is also how soon a streamed reply can start playing.
+  frame_ms: 20
+
 stt:
   # Scribe v1 is the file-based model, which is what Phase 0 scores.
-  # Phase 1 needs scribe_v2_realtime for streaming.
+  # v2 realtime is the streaming one, used on live calls: partial transcripts
+  # arrive while the caller is still speaking, so the wait at the end of their
+  # turn is a commit rather than an upload.
   elevenlabs_model: scribe_v1
+  elevenlabs_realtime_model: scribe_v2_realtime
   deepgram_model: nova-3
 
 tts:
@@ -33,7 +53,66 @@ tts:
   # real 8 kHz call. Only 8000, 16000 and 24000 are mapped to Azure formats.
   sample_rate: 24000
 
+  # How much synthesised audio to keep buffered ahead of playback. This is what
+  # stops the caller hearing a pause between every sentence: the next one is
+  # sent to Azure while the current one is still being spoken, so the round trip
+  # happens behind audio rather than in front of it.
+  #
+  # It has to cover a synthesis *and* the model writing the next sentence, which
+  # is the slower half. At 1.5 a long reply still ran dry once. The cost of
+  # going higher is only the audio thrown away when a caller interrupts, and
+  # that audio is cheap.
+  lookahead_seconds: 3.0
+
+  # The ElevenLabs voice model, for languages Azure has no voice for. Sindhi is
+  # the first. eleven_v3 lists Sindhi and Urdu among 70+ languages; the older
+  # multilingual and flash models do not. Roughly eleven times Azure's price
+  # per character, which the cache absorbs on scripted lines and talk mode pays
+  # on every sentence. See voice_agent_costs.md.
+  elevenlabs_model: eleven_v3
+
 evaluation:
   # A line worse than this is flagged in the roundtrip report. It is a reading
   # aid, not the go/no-go number. The gate is slot accuracy on real recordings.
   wer_threshold: 0.20
+
+llm:
+  # Slot extraction only, never prose. Sonnet handles Urdu code-switching
+  # ("جی haan, 3 baje") better than Haiku; swap to claude-haiku-4-5 for lower
+  # latency once real replies show the accuracy holds.
+  model: claude-sonnet-5
+
+  # Chat replies are prose, not a booking decision, so a wrong word costs
+  # a slightly odd sentence and nothing more. This call sits between the caller
+  # finishing and the agent speaking, and they hear every millisecond of it, so
+  # the model here is a trade between wit and waiting.
+  #
+  # Measured from Pakistan, 26 Aug 2026, median of 3, to a first Urdu sentence:
+  #
+  #   claude-haiku-4-5    1313 ms    (766 ms of that is one round trip)
+  #   claude-sonnet-4-6   2452 ms
+  #   claude-sonnet-5     2760 ms
+  #   claude-fable-5      4314 ms    not a light model, despite the name
+  #
+  # An earlier note here put Sonnet ~300 ms behind Haiku. It is closer to
+  # 1400 ms, and that wrong number sent one latency hunt down the wrong path.
+  # Most of the gap is time to first token, not thinking: a max_tokens=1 call
+  # is 766 ms on Haiku and 1638 ms on Sonnet 5.
+  #
+  # Haiku is fast and flat. Flat cost real jokes when the persona was a
+  # comedian, and costs nothing now that agent.yaml is a neutral helper.
+  # Go back to claude-sonnet-5 if the persona ever needs wit again.
+  chat_model: claude-haiku-4-5
+  # A ceiling, not a length control. Urdu costs several tokens per word and the
+  # reply is wrapped in JSON, so a tight limit truncates mid-string and the
+  # parse fails. Keep it generous and let the prompt ask for brevity.
+  chat_max_tokens: 200
+
+  # How many past exchanges talk mode replays to the model. Enough to hold a
+  # whole demo call, capped so a long one does not slowly turn into a long
+  # prompt, which is latency the caller sits through on every turn.
+  memory_turns: 20
+
+  # Answers are a boolean or a short time string, so the ceiling is tiny.
+  # Anything longer means the model is explaining itself, which it should not.
+  max_tokens: 256

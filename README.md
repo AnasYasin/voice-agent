@@ -1,83 +1,86 @@
-# Urdu Voice Agent
+# Voice Agent
 
-Outbound voice agent that calls leads in Pakistan and confirms appointments in
-Urdu, then records the structured outcome.
+An outbound phone agent for Pakistan. It calls a lead, holds a short spoken
+conversation in Urdu, English or Sindhi, and records the outcome and the
+transcript. Today it runs in the browser through a demo page. SIP and a real
+phone line are next.
+
+## What works
+
+- A live call streams at every stage: the caller's audio reaches the recognizer
+  while they speak, the model's reply is spoken a sentence at a time, and
+  playback starts on the first chunk. About two seconds from the caller
+  stopping to the agent starting, measured from Pakistan.
+- Three languages, one folder each under `lang/`. The demo page has a toggle.
+- Every call is saved: transcript to Postgres, full-text searchable, and a
+  stereo recording to S3, caller on the left and agent on the right.
+- A demo server with a passcode, a purpose box that becomes the system prompt
+  for that call, a call limit with a spoken goodbye, and a page that shows who
+  is talking.
 
 ## Stack
 
 | Layer | Choice |
 |---|---|
-| Orchestration | LiveKit Agents, self-hosted |
-| Telephony | Asterisk plus GSM gateway, licensed SIP trunk later |
-| STT | ElevenLabs Scribe v2 Realtime, comparing against Deepgram Nova-3 |
-| TTS | Azure Neural `ur-PK-UzmaNeural`, fixed lines cached as WAV |
-| LLM | Claude Haiku 4.5, slot extraction only |
-| Storage | S3 for recordings, Postgres for results |
+| Media | LiveKit, self-hosted |
+| Recognizer | ElevenLabs Scribe, realtime, all three languages |
+| Voice | Azure for Urdu and English. ElevenLabs `eleven_v3` for Sindhi, which Azure cannot speak. Fixed lines cached |
+| Model | Claude Haiku 4.5 for conversation, Claude Sonnet 5 for slot extraction |
+| Turn taking | Silero voice detector at 16 kHz, half a second of silence ends a turn |
+| Storage | Postgres for transcripts, S3 for recordings |
+| Telephony, next | SIP softphone, then a GSM gateway |
 
-The binding constraint on this project is a Pakistani local caller ID, not AI
-quality. Managed platforms cannot provide one, and calls placed from outside
-Pakistan pay the international settlement rate instead of the Rs 0.30/min
-domestic rate, which is why they cost roughly 12 times more per call.
-
-## Phasing
-
-| Phase | What | Hardware |
-|---|---|---|
-| **0** | Measure Urdu STT accuracy on 8 kHz phone audio | None |
-| 1 | Conversation flow end to end, browser or softphone | None |
-| 2 | State machine, DTMF fallback, recording, structured results | None |
-| 3 | Pilot on real leads | GSM gateway plus SIMs |
-| 4 | Licensed SIP trunk, dialer, answering machine detection | Trunk |
-
-Phases 0 to 2 need no telephony hardware and no purchase decision. A tester in
-Pakistan can reach the agent over a softphone at zero cost per call.
-
-## Start here
-
-Phase 0 is the go/no-go gate. Every accuracy figure used in planning was an
-estimate, including the published 3.1% Urdu WER, which is measured on clean
-studio audio rather than a phone line.
+## Run it
 
 ```bash
-cp .env.example .env          # add ELEVENLABS_API_KEY and DEEPGRAM_API_KEY
-make install-eval
-# drop 25-30 Urdu recordings into eval/samples/raw/
-make prep                     # band-limit to 8 kHz telephone audio
-make eval
+conda activate voice-agent
+pip install -r requirements.txt
+cp .env.example .env               # fill in the keys
+docker compose up -d livekit postgres
+DEMO_PASSCODE=<a code> python -m voice_agent.main --serve
 ```
 
-See `eval/README.md` for how to read the result.
+Open <http://localhost:8080>, pick a language, enter the code, talk.
+[TESTING.md](TESTING.md) has the tests, the one-shot campaign call, and what to
+do when something breaks. [deploy/aws/](deploy/aws/) has the box.
+
+## Tests
+
+```bash
+make lint       # ruff check and format check
+make test       # offline tests, no keys, no network
+make test-live  # real APIs and Postgres, a fraction of a cent
+```
 
 ## Layout
 
 ```
-config/          defaults.yaml, every tunable parameter in one file
+config/defaults.yaml   every tunable, with the reason for its value
 src/voice_agent/
-  config.py      the only module that reads config/defaults.yaml
-  audio.py       telephone-band conversion, both directions
-  stt.py         elevenlabs + deepgram behind one protocol
-  tts.py         azure voice + the cache for fixed lines
-  flow.py        the state machine. knows nothing about telephony
-  session.py     wires a call. never knows its transport
-  transport.py   browser, SIP, PSTN
-  lang/ur/       normalisation, keyterms, call script
-
-eval/            Phase 0 accuracy harness
-scripts/         manual tools, compare_stt and roundtrip
-telephony/       Asterisk config, including the NAT settings
+  main.py       startup, the only module that reads .env
+  demo.py       the demo server
+  session.py    one call, transport-agnostic
+  transport.py  LiveKit browser transport and the turn loop
+  flow.py       the script state machine, and free conversation
+  llm.py        Claude: slot extraction and streamed replies
+  stt.py        ElevenLabs and Deepgram recognizers
+  tts.py        Azure and ElevenLabs voices, with the cache
+  audio.py      telephone band filter, recordings
+  store.py      Postgres and S3
+  language.py   loads one language pack
+  lang/ur/ lang/en/ lang/sd/   voice, normaliser, script, persona per language
+web/            the demo page
+scripts/        diagnostics, e.g. replay a recording through the voice detector
+eval/           the Phase 0 accuracy harness
 ```
 
-One file per component, promoted to a folder at roughly 300 lines or three
-real implementations. Most of the files above are still stubs, see the build
-plan for what is actually done.
+Two rules the tests enforce. Nothing language-specific lives outside `lang/`,
+so a new language is a folder. Only `main.py` reads the environment, so every
+component is handed what it needs.
 
-Two design rules worth keeping. `flow.py` must never import telephony,
-which is what lets the same logic run over a browser, a softphone and a real
-gateway. And everything language-specific lives under `lang/`, so adding a
-language is a folder rather than a code change.
+## Not done
 
-## Not built yet
-
-The dialer (retries, calling hours, lead state) and answering machine
-detection. Both are outbound-only and neither is exercised by softphone
-testing, so expect real work there when Phase 3 starts.
+- Phase 0, the accuracy gate. Recognizer accuracy for Urdu and Sindhi is
+  unmeasured on real phone audio. It needs 25 to 30 real recordings.
+- Every Sindhi line was written without a native speaker and needs one.
+- SIP and PSTN transports, lead import and the dialer.

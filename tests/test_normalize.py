@@ -105,3 +105,55 @@ def test_unknown_number_raises_rather_than_guessing() -> None:
     """Better a loud failure than the voice saying something wrong."""
     with pytest.raises(ValueError, match="no Urdu word"):
         spoken_number(100)
+
+
+# --- sentence boundaries, for the streaming path ---
+
+
+def test_a_finished_sentence_comes_out_whole() -> None:
+    finished, rest = n.sentences("جی ہاں۔")
+
+    assert finished == ["جی ہاں۔"]
+    assert rest == ""
+
+
+def test_an_unfinished_sentence_is_held_back() -> None:
+    """Half a word out of the voice is worse than waiting for the rest of it."""
+    finished, rest = n.sentences("جی ہاں۔ میں انس بول")
+
+    assert finished == ["جی ہاں۔"]
+    assert rest == " میں انس بول"
+
+
+def test_several_sentences_at_once() -> None:
+    finished, _ = n.sentences("پہلا۔ دوسرا؟ تیسرا!")
+
+    assert finished == ["پہلا۔", "دوسرا؟", "تیسرا!"]
+
+
+def test_a_latin_full_stop_ends_a_sentence_too() -> None:
+    """The model writes Urdu but still reaches for a Latin full stop."""
+    finished, rest = n.sentences("theek hai. aur")
+
+    assert finished == ["theek hai."]
+    assert rest == " aur"
+
+
+def test_nothing_written_yet_is_not_a_sentence() -> None:
+    assert n.sentences("") == ([], "")
+
+
+def test_feeding_it_a_letter_at_a_time_gives_the_same_answer() -> None:
+    """Which is how it is actually used: the model writes a few characters at
+    a time and this is asked after each one."""
+    whole = "جی ہاں۔ چار بجے ٹھیک ہے۔"
+    buffer = ""
+    finished = []
+
+    for letter in whole:
+        buffer += letter
+        found, buffer = n.sentences(buffer)
+        finished += found
+
+    assert finished == ["جی ہاں۔", "چار بجے ٹھیک ہے۔"]
+    assert buffer == ""

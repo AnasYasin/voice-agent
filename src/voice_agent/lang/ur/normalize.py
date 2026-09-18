@@ -11,6 +11,12 @@ from_speech()  A transcript from STT, levelled so it can be compared and
 for_speech()   Text on its way to TTS. Azure's Urdu voice only pronounces Urdu
                script correctly, so digits and clock times have to become Urdu
                words first. Roman names are handled in transliterate.py.
+
+sentences()    Where one sentence ends, for text the model is still writing.
+               The streaming path speaks a sentence while the next one is
+               being generated, and Urdu ends a sentence with ۔ rather than a
+               full stop, so knowing where to cut is language data like the
+               rest of this file.
 """
 
 from __future__ import annotations
@@ -68,6 +74,11 @@ _MINUTES = "منٹ"
 
 _TIME = re.compile(r"\b([01]?\d|2[0-3]):([0-5]\d)\b")
 
+# A run of text up to and including whatever ends a sentence. ۔ is the Urdu
+# full stop; the Latin one is here because a model writing Urdu still reaches
+# for it, and ؟ because Urdu's question mark is its own character.
+_SENTENCE = re.compile(r"[^۔؟!?.]*[۔؟!?.]+")
+
 
 class UrduNormalizer:
     def from_speech(self, text: str) -> str:
@@ -82,6 +93,20 @@ class UrduNormalizer:
     def for_speech(self, text: str) -> str:
         """Replace clock times with Urdu words so the voice reads them properly."""
         return _TIME.sub(lambda m: spoken_time(int(m.group(1)), int(m.group(2))), text)
+
+    def sentences(self, text: str) -> tuple[list[str], str]:
+        """Split a growing buffer into finished sentences and an unfinished tail.
+
+        Called repeatedly as the model writes, so it returns the leftover
+        rather than guessing at it. A tail with no terminator yet may be half a
+        word, and speaking half a word is worse than waiting for the rest.
+        """
+        finished = []
+        rest = text
+        while match := _SENTENCE.match(rest):
+            finished.append(match.group().strip())
+            rest = rest[match.end() :]
+        return [sentence for sentence in finished if sentence], rest
 
 
 def spoken_number(value: int) -> str:

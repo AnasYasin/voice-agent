@@ -7,6 +7,7 @@ The cache tests use a stub voice, so they need no key and no network. The
 from __future__ import annotations
 
 import os
+import time
 import wave
 from dataclasses import FrozenInstanceError
 from pathlib import Path
@@ -139,3 +140,50 @@ def test_empty_text_raises_without_calling_the_api(tmp_path: Path) -> None:
     voice = AzureTTS.__new__(AzureTTS)  # no key needed, the guard runs first
     with pytest.raises(ValueError, match="nothing to synthesize"):
         AzureTTS.synthesize(voice, "   ", tmp_path / "x.wav")
+
+
+@pytest.mark.live
+@pytest.mark.skipif(not AZURE_KEY, reason="no AZURE_SPEECH_KEY")
+async def test_azure_streams_playable_pcm() -> None:
+    """Raw samples at the line's rate, with no RIFF header in front of them.
+    A header in the first chunk would be played as a burst of noise."""
+    voice = AzureTTS(AZURE_KEY, AZURE_REGION, TTS_VOICE)
+
+    chunks = [chunk async for chunk in voice.stream("جی ہاں ٹھیک ہے")]
+
+    assert chunks
+    assert not chunks[0].startswith(b"RIFF")
+    assert sum(len(chunk) for chunk in chunks) > settings.audio.sample_rate  # over half a second
+
+
+@pytest.mark.live
+@pytest.mark.skipif(not AZURE_KEY, reason="no AZURE_SPEECH_KEY")
+async def test_the_first_chunk_beats_the_finished_file(tmp_path: Path) -> None:
+    """The reason the whole path exists. What the caller waits for is the first
+    audio, and streaming has to deliver it sooner than a WAV does."""
+    voice = AzureTTS(AZURE_KEY, AZURE_REGION, TTS_VOICE)
+    line = "جی ہاں ٹھیک ہے۔ میں آپ کی ملاقات کل شام چار بجے کے لیے پکی کر رہی ہوں۔"
+
+    started = time.monotonic()
+    stream = voice.stream(line).__aiter__()
+    await anext(stream)
+    streamed = time.monotonic() - started
+    await stream.aclose()
+
+    started = time.monotonic()
+    voice.synthesize(line, tmp_path / "whole.wav")
+    whole_file = time.monotonic() - started
+
+    assert streamed < whole_file, f"first chunk {streamed:.2f}s vs whole file {whole_file:.2f}s"
+
+
+@pytest.mark.live
+@pytest.mark.skipif(not AZURE_KEY, reason="no AZURE_SPEECH_KEY")
+async def test_a_bad_voice_raises_instead_of_streaming_nothing() -> None:
+    """Azure reports this in the result, so without the check it looks like a
+    reply the caller simply could not hear."""
+    voice = AzureTTS(AZURE_KEY, AZURE_REGION, voice="ur-PK-NotARealVoice")
+
+    with pytest.raises(RuntimeError, match="did not synthesize"):
+        async for _ in voice.stream("جی ہاں"):
+            pass

@@ -1,0 +1,44 @@
+# LiveKit, configured for a real box rather than `--dev`.
+#
+# The compose file in the repo root runs `--dev`, which accepts any API key and
+# is fine on a laptop. Anything reachable from the internet needs this instead.
+port: 7880
+log_level: info
+
+# Signalling arrives already decrypted, because Caddy terminates TLS in front.
+rtc:
+  udp_port: 50000-50100
+  tcp_port: 7881
+  # The box sees its private VPC address and callers need the Elastic IP, so
+  # LiveKit has to discover the public one rather than advertise what ip addr
+  # shows it.
+  use_external_ip: true
+
+turn:
+  enabled: true
+  # LiveKit refuses to start with TURN enabled and no domain ("TURN domain
+  # required"), even on a bare IP. It is only used as the TURN realm string
+  # and for the TLS cert name; the IP certificate covers it and clients do
+  # not send SNI for an address anyway.
+  domain: ${PUBLIC_IP}
+  # UDP TURN. This is the one that rescues callers on mobile data, where
+  # carrier NAT commonly blocks the 50000-50100 range.
+  udp_port: 3478
+  # TURN over TLS. LiveKit terminates this itself on 5349, so it needs the
+  # certificate directly.
+  #
+  # LiveKit's own deployment guide puts TURN/TLS on 443 alongside the web
+  # server, multiplexed by a layer4 Caddy routing on SNI. That needs a
+  # hostname, and an IP certificate has none, because clients do not send SNI
+  # for a bare address. So TURN/TLS sits on 5349 here.
+  #
+  # What that costs: a network that permits 443 and nothing else will fail to
+  # connect. UDP 3478, UDP 50000-50100 and TCP 7881 cover everything short of
+  # that. A domain would let you fold TURN back onto 443 and close the gap.
+  tls_port: 5349
+  cert_file: /certs/fullchain.pem
+  key_file: /certs/key.pem
+
+keys:
+  # Replaced by deploy.sh from .env. Never commit a real one.
+  ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}

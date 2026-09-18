@@ -14,7 +14,15 @@ from pathlib import Path
 
 import pytest
 
-from voice_agent.stt import DeepgramSTT, ElevenLabsSTT, SpeechToText, Transcript, build
+from voice_agent.config import settings
+from voice_agent.stt import (
+    DeepgramSTT,
+    ElevenLabsSTT,
+    SpeechToText,
+    StreamingSpeechToText,
+    Transcript,
+    build,
+)
 
 ELEVENLABS_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 DEEPGRAM_KEY = os.getenv("DEEPGRAM_API_KEY", "")
@@ -117,3 +125,73 @@ def test_deepgram_returns_a_transcript(phone_audio: Path) -> None:
     assert isinstance(result, Transcript)
     assert result.provider == "deepgram-nova-3"
     assert isinstance(result.text, str)
+
+
+# --- streaming, for the live call ---
+
+
+def test_build_gives_elevenlabs_a_streaming_mode() -> None:
+    assert isinstance(build("elevenlabs", "fake-key"), StreamingSpeechToText)
+
+
+def test_deepgram_has_no_streaming_mode() -> None:
+    """Deliberate. Deepgram is here to be scored against ElevenLabs on files,
+    and a session refuses it for a live call rather than failing mid-turn."""
+    assert not isinstance(build("deepgram", "fake-key"), StreamingSpeechToText)
+
+
+def test_the_realtime_model_is_not_the_file_model() -> None:
+    """scribe_v1 cannot stream. Pointing the websocket at it would fail on
+    connect, in a place that says nothing about why."""
+    stt = ElevenLabsSTT("fake-key")
+
+    assert stt.realtime_model_id == settings.stt.elevenlabs_realtime_model
+    assert stt.realtime_model_id != stt.model_id
+
+
+@pytest.mark.live
+@pytest.mark.skipif(not ELEVENLABS_KEY, reason="no ELEVENLABS_API_KEY")
+async def test_a_committed_turn_comes_back(phone_audio: Path) -> None:
+    """No speech in it, so the transcript is empty. This proves the handshake,
+    the audio framing and the commit, which is the part that was uncertain."""
+    from voice_agent.audio import pcm
+
+    ears = ElevenLabsSTT(ELEVENLABS_KEY).stream(language="ur")
+    await ears.open()
+    try:
+        audio = pcm(phone_audio)
+        step = settings.audio.sample_rate * settings.audio.frame_ms // 1000 * 2
+        for at in range(0, len(audio), step):
+            await ears.push(audio[at : at + step])
+
+        assert isinstance(await ears.commit(), str)
+    finally:
+        await ears.close()
+
+
+@pytest.mark.live
+@pytest.mark.skipif(
+    not (ELEVENLABS_KEY and os.getenv("AZURE_SPEECH_KEY")),
+    reason="needs ElevenLabs and Azure keys",
+)
+async def test_real_urdu_speech_streams_back_as_text() -> None:
+    """Spoken by Azure, heard by Scribe, over the websocket a live call uses.
+    Synthetic speech, so this proves the plumbing rather than the accuracy."""
+    from voice_agent.lang.ur.voice import KEYTERMS, TTS_VOICE
+    from voice_agent.tts import AzureTTS
+
+    voice = AzureTTS(
+        os.environ["AZURE_SPEECH_KEY"],
+        os.getenv("AZURE_SPEECH_REGION", "centralindia"),
+        TTS_VOICE,
+    )
+    ears = ElevenLabsSTT(ELEVENLABS_KEY, keyterms=KEYTERMS).stream(language="ur")
+    await ears.open()
+    try:
+        async for chunk in voice.stream("جی ہاں ٹھیک ہے"):
+            await ears.push(chunk)
+        heard = await ears.commit()
+    finally:
+        await ears.close()
+
+    assert heard, "nothing came back from the realtime recognizer"
