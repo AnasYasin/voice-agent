@@ -242,6 +242,8 @@ async def test_the_page_is_served_without_a_code() -> None:
     assert "Access code" in body
     # The old flow pasted a token into the page. Nothing should ask for one now.
     assert "Caller token" not in body
+    # A link opened again next week must fetch the current page, not a cached one.
+    assert response.headers["Cache-Control"] == "no-cache"
 
 
 class Exploding:

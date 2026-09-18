@@ -162,7 +162,9 @@ class Demo:
 
 
 async def index(request: web.Request) -> web.StreamResponse:
-    return web.FileResponse(WEB_ROOT / "index.html")
+    """The page, never from the browser's cache. A demo link gets opened again
+    days later, and a stale copy would still be talking to the new API."""
+    return web.FileResponse(WEB_ROOT / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 async def healthz(request: web.Request) -> web.Response:
