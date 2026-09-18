@@ -2,7 +2,7 @@
 # script, so a result row looks the same whichever language the call ran in.
 
 name: confirm_appointment
-language: en-IN
+language: en-US
 
 consent: >-
   Hello. This is an automated call and it is being recorded for quality.

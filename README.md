@@ -13,7 +13,7 @@ browser. See [TESTING.md](TESTING.md) to run it.
 | Orchestration | LiveKit, self-hosted |
 | Telephony | Asterisk + GSM gateway, licensed SIP trunk later |
 | STT | ElevenLabs Scribe, compared against Deepgram Nova-3 |
-| TTS | Azure `en-IN-Neerja:DragonHDLatestNeural`, pinned to Urdu or English, fixed lines cached |
+| TTS | Azure `en-IN-Neerja:DragonHDLatestNeural` for Urdu, `en-US-JennyNeural` for English, fixed lines cached |
 | LLM | Claude Sonnet 5, slot extraction only |
 | Storage | Postgres for every call's transcript, searchable. S3 for the stereo recording |
 

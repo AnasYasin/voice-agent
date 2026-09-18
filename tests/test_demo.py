@@ -17,10 +17,10 @@ from typing import Any
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
-from voice_agent.demo import Demo, build_app
+from voice_agent.demo import PURPOSE_LIMIT, Demo, build_app, compose_persona
 
 CODE = "open-sesame"
-LANGUAGES = {"languages": {"ur-PK": "اردو", "en-IN": "English"}, "default_language": "ur-PK"}
+LANGUAGES = {"languages": {"ur-PK": "اردو", "en-US": "English"}, "default_language": "ur-PK"}
 
 
 class FakeStore:
@@ -76,10 +76,12 @@ class Recording(Demo):
         super().__init__(*args, **kwargs)
         self.started = 0
         self.locales: list[str] = []
+        self.purposes: list[str] = []
 
-    async def start_call(self, locale: str) -> tuple[str, str]:
+    async def start_call(self, locale: str, purpose: str = "") -> tuple[str, str]:
         self.started += 1
         self.locales.append(locale)
+        self.purposes.append(purpose)
         task = asyncio.create_task(asyncio.sleep(3600))
         self.calls.add(task)
         task.add_done_callback(self.calls.discard)
@@ -149,7 +151,7 @@ async def test_the_page_can_ask_which_languages_exist() -> None:
         body = await (await client.get("/api/languages")).json()
 
     assert body == {
-        "languages": [{"locale": "ur-PK", "name": "اردو"}, {"locale": "en-IN", "name": "English"}],
+        "languages": [{"locale": "ur-PK", "name": "اردو"}, {"locale": "en-US", "name": "English"}],
         "default": "ur-PK",
     }
 
@@ -157,10 +159,10 @@ async def test_the_page_can_ask_which_languages_exist() -> None:
 async def test_the_chosen_language_reaches_the_call() -> None:
     demo = make_demo()
     async with serving(demo) as client:
-        response = await client.post("/api/session", json={"passcode": CODE, "language": "en-IN"})
+        response = await client.post("/api/session", json={"passcode": CODE, "language": "en-US"})
 
     assert response.status == 200
-    assert demo.locales == ["en-IN"]
+    assert demo.locales == ["en-US"]
 
 
 async def test_no_language_means_the_default_one() -> None:
@@ -190,6 +192,38 @@ def test_a_default_language_without_a_pack_refuses_to_start() -> None:
             languages={"ur-PK": "اردو"},
             default_language="fr-FR",
         )
+
+
+async def test_the_purpose_reaches_the_call() -> None:
+    demo = make_demo()
+    async with serving(demo) as client:
+        await client.post(
+            "/api/session", json={"passcode": CODE, "purpose": "Confirm dental appointments."}
+        )
+
+    assert demo.purposes == ["Confirm dental appointments."]
+
+
+async def test_a_purpose_too_long_to_be_a_brief_is_refused() -> None:
+    """The prompt is paid for on every turn. A novel in the field is a bill."""
+    demo = make_demo()
+    async with serving(demo) as client:
+        response = await client.post(
+            "/api/session", json={"passcode": CODE, "purpose": "x" * (PURPOSE_LIMIT + 1)}
+        )
+
+    assert response.status == 400
+    assert demo.started == 0
+
+
+def test_the_persona_is_the_purpose_plus_the_house_rules() -> None:
+    persona = compose_persona("  Sell umbrellas to people in Lahore.  ", "English", 300)
+
+    assert persona.startswith("Sell umbrellas to people in Lahore.")
+    assert "Speak English throughout" in persona
+    assert "after 5 minutes" in persona
+    assert "automated calling agent" in persona
+    assert "end the call" in persona
 
 
 async def test_every_visitor_gets_their_own_token() -> None:

@@ -32,6 +32,12 @@ The visitor also picks the language. The page asks `/api/languages` for the
 packs on disk, shows one button each, and sends the chosen locale when it
 starts the call, so two visitors can be on the line in two languages at once.
 
+The visitor can also write what the agent is for. That text becomes the system
+prompt for their call, with the house rules appended: it is a calling agent, it
+speaks the chosen language, it keeps replies short because every word is paid
+for and heard, and the call has a time limit. Left empty, the language pack's
+own persona runs, exactly as before.
+
 Nothing here reads the environment. `main.py` builds this and runs it, the same
 way it builds the session, the transport and the store.
 """
@@ -59,6 +65,31 @@ WEB_ROOT = Path(__file__).resolve().parents[2] / "web"
 # A typed key rather than a bare string, which is what aiohttp wants for
 # anything stored on the app.
 DEMO = web.AppKey("demo", "Demo")
+
+
+PURPOSE_LIMIT = 2000  # characters. Long enough for a real brief, short enough to bound cost.
+
+RULES = """
+
+Rules that apply on every call, whatever the purpose above says:
+- You are an automated calling agent on a live phone call with a real person.
+  You are not a person, and you say so plainly if asked.
+- Speak {name} throughout. Speak as a woman, since the voice is female.
+- Reply in one or two short sentences. This is spoken aloud, and every word
+  costs the caller time and costs money, so no lists, no headings, nothing a
+  person would not say out loud.
+- If something was unclear, ask a short question about that one thing.
+- Never invent a detail about the caller or anything else. If you do not know,
+  say so.
+- The call is cut off automatically after {minutes} minutes. Work toward the
+  purpose without wasting turns.
+- When the caller says goodbye, says they are done, or asks you to end or cut
+  the call, say goodbye and end the call. Do not keep it going."""
+
+
+def compose_persona(purpose: str, language_name: str, call_seconds: int) -> str:
+    """The visitor's purpose, then the rules the demo adds to every call."""
+    return purpose.strip() + RULES.format(name=language_name, minutes=max(1, call_seconds // 60))
 
 
 class Demo:
@@ -102,7 +133,7 @@ class Demo:
         time by watching how long the answer takes to come back."""
         return hmac.compare_digest(given.strip(), self.passcode)
 
-    async def start_call(self, locale: str) -> tuple[str, str]:
+    async def start_call(self, locale: str, purpose: str = "") -> tuple[str, str]:
         """A room of their own, with an agent already on its way into it.
 
         The agent is started before the token goes back, because a caller who
@@ -111,11 +142,16 @@ class Demo:
         """
         call_id = f"{datetime.now():%Y-%m-%d_%H-%M-%S}_{uuid.uuid4().hex[:6]}"
         caller_id = f"visitor-{uuid.uuid4().hex[:8]}"
-        session = build_session(call_id, caller_id, locale, talk=True)
+        persona = ""
+        if purpose.strip():
+            persona = compose_persona(purpose, self.languages[locale], self.call_seconds)
+        session = build_session(call_id, caller_id, locale, talk=True, persona=persona)
         transport = build_transport(call_id)
         token = transport.caller_token(caller_id)
 
-        task = asyncio.create_task(self._run(session, transport, call_id))
+        # The purpose rides along as a call field, so the row in Postgres says
+        # what this call was for.
+        task = asyncio.create_task(self._run(session, transport, call_id, purpose=purpose.strip()))
         self.calls.add(task)
         task.add_done_callback(self.calls.discard)
 
@@ -128,7 +164,7 @@ class Demo:
         )
         return self.public_url, token
 
-    async def _run(self, session: Any, transport: Any, call_id: str) -> None:
+    async def _run(self, session: Any, transport: Any, call_id: str, **fields: str) -> None:
         """One demo call, with a deadline on it.
 
         Every failure is caught and logged. One visitor hitting a bad line must
@@ -139,7 +175,9 @@ class Demo:
         mid-sentence still said things worth reading back.
         """
         try:
-            result = await asyncio.wait_for(transport.run(session), timeout=self.call_seconds)
+            result = await asyncio.wait_for(
+                transport.run(session, **fields), timeout=self.call_seconds
+            )
             log.info("call %s ended: %s", call_id, result.outcome)
         except TimeoutError:
             log.info("call %s hit the %ds limit", call_id, self.call_seconds)
@@ -203,13 +241,19 @@ async def start_session(request: web.Request) -> web.Response:
     if locale not in demo.languages:
         return web.json_response({"error": f"No such language: {locale}."}, status=400)
 
+    purpose = str(body.get("purpose", ""))
+    if len(purpose) > PURPOSE_LIMIT:
+        return web.json_response(
+            {"error": f"Keep the purpose under {PURPOSE_LIMIT} characters."}, status=400
+        )
+
     if demo.busy:
         return web.json_response(
             {"error": "The demo is busy right now. Try again in a minute."}, status=429
         )
 
     try:
-        url, token = await demo.start_call(locale)
+        url, token = await demo.start_call(locale, purpose)
     except Exception:
         log.exception("could not start a call")
         return web.json_response({"error": "Could not start the call."}, status=500)

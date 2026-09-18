@@ -279,8 +279,8 @@ async def test_a_real_call_lands_in_postgres(store: store_module.Store, tmp_path
 async def test_a_real_english_call_lands_in_postgres(
     store: store_module.Store, tmp_path: Any
 ) -> None:
-    """The same call in English. Same voice pinned to a different language,
-    the recognizer told to expect English, the row marked en-IN."""
+    """The same call in English. A US voice,
+    the recognizer told to expect English, the row marked en-US."""
     import asyncio
 
     from voice_agent import llm, stt, tts
@@ -289,7 +289,7 @@ async def test_a_real_english_call_lands_in_postgres(
     from voice_agent.main import save_call
     from voice_agent.session import Session
 
-    language = load_language("en-IN")
+    language = load_language("en-US")
     voice = tts.build(
         os.environ["AZURE_SPEECH_KEY"],
         os.environ["AZURE_SPEECH_REGION"],
@@ -335,7 +335,7 @@ async def test_a_real_english_call_lands_in_postgres(
         await store._pool.execute("delete from calls where call_id = $1", call_id)
 
     print(f"\n  heard: {turns[1]['heard']}\n  outcome: {call['outcome']} {call['slots']}")
-    assert call["language"] == "en-IN"
+    assert call["language"] == "en-US"
     assert turns[0]["said"].startswith("Hello Anas.")
     assert turns[1]["heard"], "nothing came back from the recognizer"
     assert call["outcome"] == "done", f"the caller agreed, got {call['outcome']}"

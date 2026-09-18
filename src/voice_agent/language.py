@@ -10,7 +10,7 @@ changing AGENT_LANGUAGE in .env is enough to switch.
 
     language = load()          # from AGENT_LANGUAGE
     language = load("ur-PK")   # or explicitly
-    available()                # {"ur-PK": "اردو", "en-IN": "English"}
+    available()                # {"ur-PK": "اردو", "en-US": "English"}
 """
 
 from __future__ import annotations
@@ -60,6 +60,7 @@ class Normalizer(Protocol):
 class Language:
     code: str
     locale: str
+    name: str
     stt_language: str
     tts_voice: str
     keyterms: list[str]
@@ -108,6 +109,7 @@ def load(locale: str | None = None) -> Language:
     language = Language(
         code=code,
         locale=manifest.LOCALE,
+        name=manifest.NAME,
         stt_language=manifest.STT_LANGUAGE,
         tts_voice=manifest.TTS_VOICE,
         keyterms=list(manifest.KEYTERMS),

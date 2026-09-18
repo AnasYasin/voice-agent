@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import os
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -46,10 +47,22 @@ def require(name: str) -> str:
 
 
 def build_session(
-    call_id: str, caller_id: str, locale: str, chat: bool = False, talk: bool = False
+    call_id: str,
+    caller_id: str,
+    locale: str,
+    chat: bool = False,
+    talk: bool = False,
+    persona: str = "",
 ) -> Session:
-    """Wire one call. Every provider is chosen here and nowhere else."""
+    """Wire one call. Every provider is chosen here and nowhere else.
+
+    `persona` replaces the language pack's own for this one call. The demo
+    page lets a visitor write what the agent is for; the pack's persona is what
+    every other run uses.
+    """
     language = language_module.load(locale)
+    if persona:
+        language = replace(language, persona=persona)
 
     voice = tts.build(
         require("AZURE_SPEECH_KEY"),

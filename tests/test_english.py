@@ -12,21 +12,20 @@ normalizer = EnglishNormalizer()
 
 
 def test_english_loads_from_the_bare_code_and_the_locale() -> None:
-    assert load("en").locale == load("en-IN").locale == "en-IN"
+    assert load("en").locale == load("en-US").locale == "en-US"
 
 
-def test_english_shares_the_voice_and_swaps_the_recognizer_language() -> None:
-    """Same person in both languages; the recognizer is told which one."""
-    english, urdu = load("en-IN"), load("ur-PK")
+def test_english_has_a_us_voice_and_the_recognizer_is_told_english() -> None:
+    english, urdu = load("en-US"), load("ur-PK")
 
-    assert english.tts_voice == urdu.tts_voice
+    assert english.tts_voice == "en-US-JennyNeural"
     assert english.stt_language == "en"
     assert urdu.stt_language == "ur"
 
 
 def test_the_script_has_the_same_shape_as_the_urdu_one() -> None:
     """A result row looks the same whichever language the call ran in."""
-    english, urdu = load("en-IN").script, load("ur-PK").script
+    english, urdu = load("en-US").script, load("ur-PK").script
 
     assert english.first == urdu.first == "confirm_appointment"
     assert set(english.states) == set(urdu.states)
@@ -34,13 +33,13 @@ def test_the_script_has_the_same_shape_as_the_urdu_one() -> None:
 
 
 def test_the_greeting_takes_the_caller_fields() -> None:
-    ask = load("en-IN").script.states["confirm_appointment"].ask
+    ask = load("en-US").script.states["confirm_appointment"].ask
 
     assert ask.format(name="Anas", date="tomorrow", time="4 PM").startswith("Hello Anas.")
 
 
 def test_the_normalizer_satisfies_the_protocol() -> None:
-    assert isinstance(load("en-IN").normalizer, Normalizer)
+    assert isinstance(load("en-US").normalizer, Normalizer)
 
 
 @pytest.mark.parametrize(

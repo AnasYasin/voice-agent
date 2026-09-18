@@ -116,9 +116,9 @@ flag is the only difference. Same two servers in terminals 1 and 2 either way.
 | `python -m voice_agent.main --chat --name … --date … --time …` | The form, but off-script asides get answered in character before it returns to the question. |
 | `make talk` | No script and no slots. Just the persona, talking. Hang up to end it. |
 
-The language is `AGENT_LANGUAGE` in `.env`. `ur-PK` is the default and `en-IN`
-runs the same script and persona in English, with the same voice speaking
-English natively and the recognizer told to expect English. Nothing else
+The language is `AGENT_LANGUAGE` in `.env`. `ur-PK` is the default and `en-US`
+runs the same script and persona in English, with a US voice and the recognizer
+told to expect English. Nothing else
 changes.
 
 Talk mode is the one that exercises `lang/<code>/agent.yaml`. If you edited the
@@ -144,6 +144,14 @@ The language toggle shows one button per folder under `lang/`, fetched from
 `/api/languages`. `AGENT_LANGUAGE` only decides which one starts selected.
 Each call runs in the language its caller picked, so two visitors can be on
 the line in two languages at once.
+
+The purpose box is the system prompt for that one call. Whatever the visitor
+writes, the demo appends the house rules: it is a calling agent, it speaks the
+chosen language, it keeps replies to a sentence or two, the call has a time
+limit, and it ends the call when asked. Left empty, the pack's own persona in
+`lang/<code>/agent.yaml` runs. The purpose is saved on the call row under
+`fields`, so a call in Postgres says what it was for. The orb on the page
+pulses while the agent speaks and rings while the caller does.
 
 It refuses to start without `DEMO_PASSCODE`, on purpose. `DEMO_MAX_CALLS`
 defaults to 3 and `DEMO_CALL_SECONDS` to 300.
