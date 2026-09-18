@@ -270,7 +270,18 @@ class BrowserTransport:
         """Start playback in the background so the caller can interrupt it."""
 
         async def play() -> None:
-            await self._play(source, speaking, session.played)
+            try:
+                await self._play(source, speaking, session.played)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # A voice that fails mid-turn otherwise fails in silence: the
+                # task is never awaited, so the caller hears nothing and the
+                # log says nothing. A Sindhi call did exactly that on 18 Sep
+                # 2026 when the voice key lacked a permission.
+                log.exception(
+                    "[%s] the agent's voice failed, the caller heard nothing", speaking.state
+                )
             if session.finished:
                 hung_up.set()
 

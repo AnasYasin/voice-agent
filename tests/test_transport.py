@@ -405,3 +405,26 @@ async def test_a_line_from_outside_is_played_and_ends_the_call(tmp_path: Path) -
     assert session.transcript[-1].said == "My time is up. Goodbye."
     assert session.finished
     assert session.result.outcome == "time_limit"
+
+
+async def test_a_voice_that_fails_is_logged_not_swallowed(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The playback task is fire-and-forget, so an exception in it used to
+    vanish. The caller heard silence and the log said nothing."""
+
+    async def broken() -> AsyncIterator[bytes]:
+        raise RuntimeError("voice refused: missing permission")
+        yield b""
+
+    hung_up = asyncio.Event()
+    session = live_session(tmp_path, talk="hi")
+    task = transport()._say(
+        FakeSource(), Speaking(chunks=broken(), state="talk", expects_reply=True), session, hung_up
+    )
+
+    with caplog.at_level("ERROR"):
+        await task
+
+    assert "the agent's voice failed" in caplog.text
+    assert "missing permission" in caplog.text
