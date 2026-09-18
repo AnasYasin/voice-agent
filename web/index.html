@@ -18,7 +18,7 @@
   html, body { height: 100%; }
   body {
     margin: 0; font: 15px/1.5 system-ui, sans-serif;
-    display: grid; grid-template-rows: auto 1fr auto;
+    display: grid; grid-template-rows: auto auto 1fr; align-content: start;
     padding: max(.75rem, env(safe-area-inset-top)) 1rem max(.75rem, env(safe-area-inset-bottom));
     gap: .5rem;
   }
@@ -39,9 +39,9 @@
   }
 
   /* Middle: the orb, sized to whatever is left, never forcing a scroll. */
-  main { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .9rem; min-height: 0; }
+  main { display: flex; align-items: center; justify-content: center; padding: 1.25rem 0 1rem; }
   #orb {
-    --size: clamp(6rem, 24vmin, 11rem);
+    --size: clamp(4.5rem, 16vmin, 7.5rem);
     width: var(--size); height: var(--size); border-radius: 50%;
     background: radial-gradient(circle at 35% 35%, #60a5fa, var(--accent) 60%, #1e3a8a);
     /* The agent's level grows the orb; the caller's level grows the ring. */
@@ -55,23 +55,24 @@
   #orb.off { filter: grayscale(.75) brightness(.8); }
   #orb.on { animation: none; }
   @keyframes breathe { 0%, 100% { scale: 1; } 50% { scale: 1.035; } }
-  #status { margin: 0; font-size: .95rem; color: var(--muted); text-align: center; min-height: 1.5em; }
-  #live { margin: 0; font-size: .75rem; color: var(--muted); }
+  .title { display: flex; flex-direction: column; gap: .05rem; }
+  #status { margin: 0; font-size: .8rem; color: var(--muted); }
+  #live { margin: 0; font-size: .75rem; color: var(--muted); align-self: center; white-space: nowrap; }
 
   /* Bottom: the purpose, which is the point, and the one button. */
-  footer { display: flex; flex-direction: column; gap: .5rem; max-width: 40rem; width: 100%; margin: 0 auto; }
+  footer { display: flex; flex-direction: column; gap: .45rem; max-width: 40rem; width: 100%; margin: 0 auto; }
   footer label { font-weight: 600; font-size: .8rem; }
   textarea {
     width: 100%; padding: .65rem .8rem; font: inherit; color: inherit; line-height: 1.45;
     border: 1px solid var(--line); border-radius: .6rem; background: transparent;
-    height: clamp(4.5rem, 16vh, 8rem); resize: none;
+    height: clamp(4rem, 14vh, 7rem); resize: none;
   }
   textarea:focus, #passcode:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
   .help { font-size: .75rem; color: var(--muted); margin: 0; }
-  .actions { display: flex; gap: .5rem; }
+  .actions { display: flex; gap: .75rem; align-items: center; }
   .actions button {
-    flex: 1; padding: .75rem 1.2rem; font: inherit; font-weight: 650;
-    border: 0; border-radius: .6rem; cursor: pointer; background: var(--accent); color: #fff;
+    padding: .55rem 1.1rem; font: inherit; font-size: .9rem; font-weight: 650;
+    border: 0; border-radius: .5rem; cursor: pointer; background: var(--accent); color: #fff;
   }
   #hangup { background: transparent; color: inherit; border: 1px solid var(--line); }
   button:disabled, textarea:disabled, input:disabled { opacity: .45; cursor: not-allowed; }
@@ -81,7 +82,10 @@
 <body>
 
 <header>
-  <h1>Voice agent</h1>
+  <div class="title">
+    <h1>Voice agent</h1>
+    <p id="status"></p>
+  </div>
   <div class="controls">
     <div id="languages" role="group" aria-label="Language"></div>
     <input id="passcode" type="password" autocomplete="off" placeholder="Access code" aria-label="Access code" />
@@ -90,8 +94,6 @@
 
 <main>
   <div id="orb" class="off" aria-hidden="true"></div>
-  <p id="status">Say what the agent is for, then connect.</p>
-  <p id="live" aria-live="polite"></p>
 </main>
 
 <footer>
@@ -102,6 +104,7 @@
   <div class="actions">
     <button id="go" type="button">Connect and talk</button>
     <button id="hangup" type="button" hidden>Hang up</button>
+    <p id="live" aria-live="polite"></p>
   </div>
 </footer>
 
@@ -172,7 +175,7 @@ async function refreshLive() {
     const count = Number(in_flight) || 0;
     live.textContent = count === 0
       ? 'No one is on a call right now.'
-      : `${count} on a call right now${busy ? ', all lines full' : ''}.`;
+      : `${count} ${count === 1 ? 'person is' : 'people are'} on a call right now${busy ? ', all lines full' : ''}.`;
   } catch { /* keep the last known line */ }
 }
 refreshLive();

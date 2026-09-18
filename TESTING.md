@@ -176,6 +176,7 @@ The old paste-a-token client is still there for `make run`, at
 | Agent dies the moment you connect | Native segfault, seen once in six runs, cause unknown. Restart and re-paste the token |
 | Agent never hears you | An expired token from an earlier run. Each run prints a new one |
 | Never hears you | Mic permission, or you connected before terminal 3 said `waiting` |
+| Answers two turns, then goes deaf | The voice detector died. `python scripts/replay_vad.py calls/<id>/call.wav` shows where. Fixed once by running the model at 16 kHz |
 | `cannot reach LiveKit` | Terminal 1 not running |
 | `cannot reach Postgres` | `docker compose up -d postgres`, or `DATABASE_URL` in `.env` is wrong |
 | `ModuleNotFoundError` | Skipped `pip install -e .`, or env not active |

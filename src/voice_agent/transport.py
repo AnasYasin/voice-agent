@@ -34,8 +34,14 @@ from voice_agent.session import Session, Speaking
 
 log = logging.getLogger(__name__)
 
-# Silero only runs at 8 kHz or 16 kHz. 8 is what a phone line gives us anyway.
+# Silero runs at 8 kHz or 16 kHz. The frames stay at the line rate, 8 kHz, and
+# the model runs at 16 kHz with the plugin resampling in between. Its 8 kHz
+# model went deaf on a real call on 18 Sep 2026: replayed offline, the speech
+# probability dropped to exactly zero 19 s in and never came back, so the agent
+# answered two turns and then nothing. The same recording at 16 kHz is detected
+# throughout. scripts/replay_vad.py reproduces this on any call.wav.
 VAD_SAMPLE_RATE = 8000
+VAD_MODEL_SAMPLE_RATE = 16000
 FRAME_MS = settings.audio.frame_ms
 
 # How long after playback starts to ignore a speech-start event.
@@ -92,7 +98,8 @@ class BrowserTransport:
         room = rtc.Room()
         source = rtc.AudioSource(settings.audio.sample_rate, 1)
         vad = silero.VAD.load(
-            sample_rate=VAD_SAMPLE_RATE, min_silence_duration=settings.audio.vad_silence_seconds
+            sample_rate=VAD_MODEL_SAMPLE_RATE,
+            min_silence_duration=settings.audio.vad_silence_seconds,
         )
 
         try:
@@ -169,6 +176,8 @@ class BrowserTransport:
                 event = await self._next(events, hung_up)
                 if event is None:
                     break
+                if event.type != VADEventType.INFERENCE_DONE:
+                    log.debug("vad %s", event.type)
 
                 if event.type == VADEventType.START_OF_SPEECH:
                     # Barge-in. They started talking, so stop talking over them.

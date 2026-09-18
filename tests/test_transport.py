@@ -26,6 +26,7 @@ from voice_agent.config import settings  # noqa: E402
 from voice_agent.session import Speaking  # noqa: E402
 from voice_agent.transport import (  # noqa: E402
     FRAME_MS,
+    VAD_MODEL_SAMPLE_RATE,
     VAD_SAMPLE_RATE,
     BrowserTransport,
     Transport,
@@ -221,6 +222,9 @@ def test_the_whole_path_stays_at_telephone_rate() -> None:
     """A browser demo that sounds better than a phone call is a demo that lies.
     Silero only runs at 8 or 16 kHz, and 8 is what the line gives us."""
     assert VAD_SAMPLE_RATE == settings.audio.sample_rate == 8000
+    # The model itself runs at 16 kHz. At 8 kHz it went deaf 19 s into a real
+    # call, replayed and confirmed offline on 18 Sep 2026.
+    assert VAD_MODEL_SAMPLE_RATE == 16000
 
 
 # --- shape ---
