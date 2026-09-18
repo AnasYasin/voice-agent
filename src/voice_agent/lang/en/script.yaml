@@ -1,0 +1,44 @@
+# Component 6, in English. Same states, slots and keypad options as the Urdu
+# script, so a result row looks the same whichever language the call ran in.
+
+name: confirm_appointment
+language: en-IN
+
+consent: >-
+  Hello. This is an automated call and it is being recorded for quality.
+
+states:
+  - id: confirm_appointment
+    ask: >-
+      Hello {name}. Your appointment is on {date} at {time}.
+      Does that time work for you?
+    slot: confirmed
+    type: boolean
+    dtmf: {"1": true, "2": false, "3": "repeat"}
+    on_true: done
+    on_false: reschedule
+    on_fail: handoff
+    max_retries: 2
+
+  - id: reschedule
+    ask: Please tell me a day and time that suits you better.
+    slot: preferred_time
+    type: datetime
+    on_true: done
+    on_fail: handoff
+    max_retries: 2
+
+  - id: handoff
+    say: Let me connect you to one of our staff. Thank you.
+    terminal: true
+
+  - id: done
+    say: Thank you. Have a good day.
+    terminal: true
+
+extraction_guidance: >-
+  The caller speaks English, possibly with Urdu words mixed in. Treat "yes",
+  "yeah", "sure", "okay", "that works", "haan", "theek hai" as yes, and "no",
+  "nope", "not possible", "nahi" as no. Times may arrive as "three", "3 pm" or
+  "three in the afternoon" and all mean 15:00 unless the caller says morning.
+  Return unclear rather than guessing.

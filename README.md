@@ -13,7 +13,7 @@ browser. See [TESTING.md](TESTING.md) to run it.
 | Orchestration | LiveKit, self-hosted |
 | Telephony | Asterisk + GSM gateway, licensed SIP trunk later |
 | STT | ElevenLabs Scribe, compared against Deepgram Nova-3 |
-| TTS | Azure Neural `ur-PK-UzmaNeural`, fixed lines cached |
+| TTS | Azure `en-IN-Neerja:DragonHDLatestNeural`, pinned to Urdu or English, fixed lines cached |
 | LLM | Claude Sonnet 5, slot extraction only |
 | Storage | Postgres for every call's transcript, searchable. S3 for the stereo recording |
 
@@ -61,7 +61,8 @@ src/voice_agent/
   store.py      one call and its turns into postgres, its recording into s3
   transport.py  livekit browser (SIP and PSTN later)
   main.py       process startup, the only module reading env
-  lang/ur/      normalisation, keyterms, sentence ends, call script
+  lang/ur/      Urdu: normalisation, keyterms, sentence ends, call script, persona
+  lang/en/      English, the same five files. AGENT_LANGUAGE=en-IN switches
 web/            browser test client
 eval/           Phase 0 accuracy harness
 telephony/      Asterisk config
@@ -69,7 +70,8 @@ telephony/      Asterisk config
 
 Two rules the tests enforce. `session.py` never imports telephony, which is
 what lets one session serve browser, softphone and a real gateway. Nothing
-Urdu-specific lives outside `lang/`, so adding a language is a folder.
+Urdu-specific lives outside `lang/`, so adding a language is a folder. English
+was added that way: five files under `lang/en/`, nothing else touched.
 
 A live call streams at every stage: the caller's audio reaches the recognizer
 while they are still speaking, the model's reply is spoken a sentence at a time

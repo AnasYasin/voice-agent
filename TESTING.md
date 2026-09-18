@@ -26,6 +26,7 @@ is saved to Postgres and read back.
 
 ```bash
 pytest -m live -s -k real_call_lands   # heard: جی ہاں ٹھیک ہے / outcome: done
+pytest -m live -s -k real_english      # the same call in English
 ```
 
 Green means the pipeline is wired right. It does not mean Urdu recognition is
@@ -115,7 +116,12 @@ flag is the only difference. Same two servers in terminals 1 and 2 either way.
 | `python -m voice_agent.main --chat --name … --date … --time …` | The form, but off-script asides get answered in character before it returns to the question. |
 | `make talk` | No script and no slots. Just the persona, talking. Hang up to end it. |
 
-Talk mode is the one that exercises `lang/ur/agent.yaml`. If you edited the
+The language is `AGENT_LANGUAGE` in `.env`. `ur-PK` is the default and `en-IN`
+runs the same script and persona in English, with the same voice speaking
+English natively and the recognizer told to expect English. Nothing else
+changes.
+
+Talk mode is the one that exercises `lang/<code>/agent.yaml`. If you edited the
 persona and the agent still asks about an appointment, you are missing
 `--talk`. `--name`, `--date` and `--time` are ignored in talk mode, so
 `make talk` needs no arguments.
