@@ -407,3 +407,69 @@ async def test_a_real_sindhi_line_is_spoken_by_elevenlabs(tmp_path: Any) -> None
         raise
 
     assert sum(len(chunk) for chunk in chunks) > 8000, "less than half a second of audio"
+
+
+@pytest.mark.skipif(not all(os.getenv(key) for key in KEYS), reason="needs all three API keys")
+async def test_a_real_german_call_lands_in_postgres(
+    store: store_module.Store, tmp_path: Any
+) -> None:
+    """The same call in German. Azure speaks it natively, the recognizer is told
+    to expect German, and the row is marked de-DE."""
+    import asyncio
+
+    from voice_agent import llm, stt, tts
+    from voice_agent.config import settings
+    from voice_agent.language import load as load_language
+    from voice_agent.main import save_call
+    from voice_agent.session import Session
+
+    language = load_language("de-DE")
+    voice = tts.build(
+        os.environ["AZURE_SPEECH_KEY"],
+        os.environ["AZURE_SPEECH_REGION"],
+        language.tts_voice,
+        cache_dir=tmp_path / "cache",
+        locale=language.locale,
+    )
+    caller = tts.build(
+        os.environ["AZURE_SPEECH_KEY"],
+        os.environ["AZURE_SPEECH_REGION"],
+        "de-DE-ConradNeural",
+        cache_dir=tmp_path / "caller_cache",
+    )
+    call_id = f"test_{uuid.uuid4().hex[:8]}"
+    session = Session(
+        language=language,
+        stt=stt.build("elevenlabs", os.environ["ELEVENLABS_API_KEY"], language.keyterms),
+        tts=voice,
+        extractor=llm.build(os.environ["ANTHROPIC_API_KEY"]),
+        work_dir=tmp_path / call_id,
+        caller_id="03001234567",
+    )
+
+    await session.open()
+    try:
+        async for _ in session.greet(name="Anas", date="morgen", time="16 Uhr").chunks:
+            pass
+        async for chunk in caller.tts.stream("Ja, das passt mir gut."):
+            await session.listen(chunk)
+            await asyncio.sleep(settings.audio.frame_ms / 1000)
+        async for _ in (await session.answer()).chunks:
+            pass
+    finally:
+        await session.close()
+
+    await save_call(session, store, None)
+    try:
+        call = await store._pool.fetchrow("select * from calls where call_id = $1", call_id)
+        turns = await store._pool.fetch(
+            "select * from turns where call_id = $1 order by turn", call_id
+        )
+    finally:
+        await store._pool.execute("delete from calls where call_id = $1", call_id)
+
+    print(f"\n  heard: {turns[1]['heard']}\n  outcome: {call['outcome']} {call['slots']}")
+    assert call["language"] == "de-DE"
+    assert turns[0]["said"].startswith("Guten Tag Anas.")
+    assert turns[1]["heard"], "nothing came back from the recognizer"
+    assert call["outcome"] == "done", f"the caller agreed, got {call['outcome']}"

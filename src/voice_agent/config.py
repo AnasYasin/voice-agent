@@ -71,6 +71,8 @@ class LlmConfig:
     model: str
     max_tokens: int
     chat_model: str = ""
+    chat_effort: str = "low"
+    chat_thinking: bool = False
     chat_max_tokens: int = 160
     memory_turns: int = 20
 

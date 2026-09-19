@@ -116,12 +116,10 @@ flag is the only difference. Same two servers in terminals 1 and 2 either way.
 | `python -m voice_agent.main --chat --name … --date … --time …` | The form, but off-script asides get answered in character before it returns to the question. |
 | `make talk` | No script and no slots. Just the persona, talking. Hang up to end it. |
 
-The language is `AGENT_LANGUAGE` in `.env`. `ur-PK` is the default, `sd-PK` is
-Sindhi on the ElevenLabs voice, which needs the `text_to_speech` permission on
-`ELEVENLABS_API_KEY`, and `en-US`
-runs the same script and persona in English, with a US voice and the recognizer
-told to expect English. Nothing else
-changes.
+The language is `AGENT_LANGUAGE` in `.env`, and the demo page lets each caller
+pick one. `ur-PK` is the default. `en-US` and `de-DE` run the same script and
+persona on Azure voices. `sd-PK` is Sindhi on the ElevenLabs voice, which needs
+the `text_to_speech` permission on `ELEVENLABS_API_KEY`. Nothing else changes.
 
 Talk mode is the one that exercises `lang/<code>/agent.yaml`. If you edited the
 persona and the agent still asks about an appointment, you are missing

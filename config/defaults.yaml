@@ -99,10 +99,29 @@ llm:
   # Most of the gap is time to first token, not thinking: a max_tokens=1 call
   # is 766 ms on Haiku and 1638 ms on Sonnet 5.
   #
-  # Haiku is fast and flat. Flat cost real jokes when the persona was a
-  # comedian, and costs nothing now that agent.yaml is a neutral helper.
-  # Go back to claude-sonnet-5 if the persona ever needs wit again.
-  chat_model: claude-haiku-4-5
+  # Switched from claude-haiku-4-5 to Sonnet 5 on 19 Sep 2026. Anas wanted the
+  # agent to sound smarter, and the purpose box now carries a real brief that
+  # a stronger model follows better. The cost is the gap above, roughly 1.4 s
+  # added to every turn, and double the price per token. Go back to
+  # claude-haiku-4-5 if callers start complaining about the wait.
+  chat_model: claude-sonnet-5
+
+  # Whether the chat model thinks before speaking, and how hard.
+  #
+  # Measured from Pakistan on 19 Sep 2026, median of three live turns:
+  #
+  #   sonnet 5, thinking high (the default)   3960 ms
+  #   sonnet 5, thinking low                  2960 ms
+  #   sonnet 5, thinking off                  2970 ms
+  #   haiku 4.5                              ~2000 ms
+  #
+  # Low effort and no thinking measure the same, so thinking stays on at low
+  # effort: it is the documented lever and it avoids the failure modes that
+  # come with switching thinking off. The second left over against Haiku is
+  # Sonnet's time to first token, not deliberation, and no setting removes it.
+  # Raise the effort if replies ever sound thin.
+  chat_thinking: true
+  chat_effort: low
   # A ceiling, not a length control. Urdu costs several tokens per word and the
   # reply is wrapped in JSON, so a tight limit truncates mid-string and the
   # parse fails. Keep it generous and let the prompt ask for brevity.

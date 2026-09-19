@@ -1,0 +1,45 @@
+# Component 6, in German. Same states, slots and keypad options as the other
+# scripts, so a result row looks the same whichever language the call ran in.
+
+name: confirm_appointment
+language: de-DE
+
+consent: >-
+  Guten Tag. Dies ist ein automatischer Anruf und wird zur Qualitätssicherung
+  aufgezeichnet.
+
+states:
+  - id: confirm_appointment
+    ask: >-
+      Guten Tag {name}. Ihr Termin ist am {date} um {time}.
+      Passt Ihnen diese Zeit?
+    slot: confirmed
+    type: boolean
+    dtmf: {"1": true, "2": false, "3": "repeat"}
+    on_true: done
+    on_false: reschedule
+    on_fail: handoff
+    max_retries: 2
+
+  - id: reschedule
+    ask: Nennen Sie mir bitte einen anderen Tag oder eine andere Uhrzeit, die Ihnen besser passt.
+    slot: preferred_time
+    type: datetime
+    on_true: done
+    on_fail: handoff
+    max_retries: 2
+
+  - id: handoff
+    say: Ich verbinde Sie mit einer Kollegin. Vielen Dank.
+    terminal: true
+
+  - id: done
+    say: Vielen Dank. Ich wünsche Ihnen einen schönen Tag.
+    terminal: true
+
+extraction_guidance: >-
+  The caller speaks German. Treat "ja", "genau", "passt", "in Ordnung", "klar",
+  "passt mir" as yes, and "nein", "geht nicht", "leider nicht" as no. Times may
+  arrive as "15 Uhr", "drei Uhr nachmittags" or "halb vier" and all mean 15:00
+  or 15:30; note that "halb vier" is 15:30, not 16:30. "morgen" is tomorrow,
+  "morgens" is in the morning. Return unclear rather than guessing.

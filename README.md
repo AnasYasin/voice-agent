@@ -1,7 +1,7 @@
 # Voice Agent
 
 An outbound phone agent for Pakistan. It calls a lead, holds a short spoken
-conversation in Urdu, English or Sindhi, and records the outcome and the
+conversation in Urdu, English, German or Sindhi, and records the outcome and
 transcript. Today it runs in the browser through a demo page. SIP and a real
 phone line are next.
 
@@ -11,7 +11,7 @@ phone line are next.
   while they speak, the model's reply is spoken a sentence at a time, and
   playback starts on the first chunk. About two seconds from the caller
   stopping to the agent starting, measured from Pakistan.
-- Three languages, one folder each under `lang/`. The demo page has a toggle.
+- Four languages, one folder each under `lang/`. The demo page has a toggle.
 - Every call is saved: transcript to Postgres, full-text searchable, and a
   stereo recording to S3, caller on the left and agent on the right.
 - A demo server with a passcode, a purpose box that becomes the system prompt
@@ -23,9 +23,9 @@ phone line are next.
 | Layer | Choice |
 |---|---|
 | Media | LiveKit, self-hosted |
-| Recognizer | ElevenLabs Scribe, realtime, all three languages |
-| Voice | Azure for Urdu and English. ElevenLabs `eleven_v3` for Sindhi, which Azure cannot speak. Fixed lines cached |
-| Model | Claude Haiku 4.5 for conversation, Claude Sonnet 5 for slot extraction |
+| Recognizer | ElevenLabs Scribe, realtime, all four languages |
+| Voice | Azure for Urdu, English and German. ElevenLabs `eleven_v3` for Sindhi, which Azure cannot speak. Fixed lines cached |
+| Model | Claude Sonnet 5 for conversation at low thinking effort, and for slot extraction |
 | Turn taking | Silero voice detector at 16 kHz, half a second of silence ends a turn |
 | Storage | Postgres for transcripts, S3 for recordings |
 | Telephony, next | SIP softphone, then a GSM gateway |
@@ -68,7 +68,7 @@ src/voice_agent/
   audio.py      telephone band filter, recordings
   store.py      Postgres and S3
   language.py   loads one language pack
-  lang/ur/ lang/en/ lang/sd/   voice, normaliser, script, persona per language
+  lang/ur/ lang/en/ lang/de/ lang/sd/   voice, normaliser, script, persona per language
 web/            the demo page
 scripts/        diagnostics, e.g. replay a recording through the voice detector
 eval/           the Phase 0 accuracy harness
