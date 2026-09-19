@@ -473,3 +473,33 @@ async def test_a_real_german_call_lands_in_postgres(
     assert turns[0]["said"].startswith("Guten Tag Anas.")
     assert turns[1]["heard"], "nothing came back from the recognizer"
     assert call["outcome"] == "done", f"the caller agreed, got {call['outcome']}"
+
+
+@pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY"), reason="needs the Anthropic key")
+@pytest.mark.parametrize("locale, script_name", [("ur-PK", "Urdu"), ("sd-PK", "Sindhi")])
+async def test_a_composed_prompt_still_gets_a_reply_in_the_right_script(
+    locale: str, script_name: str
+) -> None:
+    """The house rules say "Speak <name> throughout", and the name went from the
+    native script to Roman on 19 Sep 2026 so the dropdown is readable. This
+    checks the model still answers in the language's own script, not in Roman.
+    """
+    from voice_agent import llm
+    from voice_agent.demo import compose_persona
+    from voice_agent.language import load as load_language
+
+    language = load_language(locale)
+    assert language.name == script_name, "the toggle label is what the rules name"
+    persona = compose_persona(
+        "You are calling a patient to confirm tomorrow's appointment.", language.name, 300
+    )
+    responder = llm.build_responder(os.environ["ANTHROPIC_API_KEY"])
+
+    utterance = responder.stream("السلام علیکم", persona=persona, history=[])
+    reply = "".join([piece async for piece in utterance])
+
+    letters = [character for character in reply if character.isalpha()]
+    arabic = [character for character in letters if "\u0600" <= character <= "\u06ff"]
+    print(f"\n  {locale}: {reply}")
+    assert letters, "the model said nothing"
+    assert len(arabic) / len(letters) > 0.8, f"{locale} answered in Roman, not its own script"
