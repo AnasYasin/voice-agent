@@ -40,13 +40,15 @@ def default_locale() -> str:
 
 
 def available() -> dict[str, str]:
-    """Every language pack on disk, locale to display name. This is what a
-    language toggle shows, so adding a folder adds a button."""
-    packs = {}
-    for manifest_path in sorted(PACKS_DIR.glob("*/voice.py")):
-        manifest = importlib.import_module(f"voice_agent.lang.{manifest_path.parent.name}.voice")
-        packs[manifest.LOCALE] = manifest.NAME
-    return packs
+    """Every language pack on disk, locale to display name, in the order each
+    pack asks for. This is what a language toggle shows, so adding a folder
+    adds a button and its ORDER decides where it lands."""
+    manifests = [
+        importlib.import_module(f"voice_agent.lang.{path.parent.name}.voice")
+        for path in sorted(PACKS_DIR.glob("*/voice.py"))
+    ]
+    manifests.sort(key=lambda manifest: (getattr(manifest, "ORDER", 99), manifest.LOCALE))
+    return {manifest.LOCALE: manifest.NAME for manifest in manifests}
 
 
 @runtime_checkable

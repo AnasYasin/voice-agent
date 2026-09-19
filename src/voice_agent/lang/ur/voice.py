@@ -11,6 +11,7 @@ from voice_agent.lang.ur.normalize import UrduNormalizer
 
 LOCALE = "ur-PK"
 NAME = "اردو"  # what the caller sees on the language toggle
+ORDER = 3  # where it sits on the language toggle
 STT_LANGUAGE = "ur"
 TTS_PROVIDER = "azure"
 # Female. An Indian English Dragon HD voice speaking Urdu as a secondary

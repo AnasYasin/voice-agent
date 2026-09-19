@@ -12,6 +12,7 @@ from voice_agent.lang.en.normalize import EnglishNormalizer
 # Neural-tier voice, so it is also the cheaper of the two.
 LOCALE = "en-US"
 NAME = "English"  # what the caller sees on the language toggle
+ORDER = 2  # where it sits on the language toggle
 STT_LANGUAGE = "en"
 TTS_PROVIDER = "azure"
 TTS_VOICE = "en-US-JennyNeural"

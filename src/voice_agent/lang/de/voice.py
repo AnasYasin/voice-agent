@@ -13,6 +13,7 @@ from voice_agent.lang.de.normalize import GermanNormalizer
 
 LOCALE = "de-DE"
 NAME = "Deutsch"  # what the caller sees on the language toggle
+ORDER = 1  # where it sits on the language toggle
 STT_LANGUAGE = "de"
 TTS_PROVIDER = "azure"
 # Female, the standard German Neural voice. de-DE-Seraphina:DragonHDLatestNeural
