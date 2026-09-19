@@ -10,7 +10,8 @@ from __future__ import annotations
 from voice_agent.lang.ur.normalize import UrduNormalizer
 
 LOCALE = "ur-PK"
-NAME = "اردو"  # what the caller sees on the language toggle
+NAME = "Urdu"  # the toggle label, Roman so every caller can read it, and
+# the word the composed system prompt tells the model to speak
 ORDER = 3  # where it sits on the language toggle
 STT_LANGUAGE = "ur"
 TTS_PROVIDER = "azure"

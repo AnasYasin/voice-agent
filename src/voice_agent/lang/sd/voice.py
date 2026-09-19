@@ -14,7 +14,7 @@ from __future__ import annotations
 from voice_agent.lang.sd.normalize import SindhiNormalizer
 
 LOCALE = "sd-PK"
-NAME = "سنڌي"  # what the caller sees on the language toggle
+NAME = "Sindhi"  # what the caller sees on the language toggle
 ORDER = 4  # where it sits on the language toggle
 STT_LANGUAGE = "snd"
 TTS_PROVIDER = "elevenlabs"

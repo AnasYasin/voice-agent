@@ -19,7 +19,7 @@ def test_sindhi_loads_on_the_elevenlabs_voice() -> None:
     language = load("sd-PK")
 
     assert language.locale == "sd-PK"
-    assert language.name == "سنڌي"
+    assert language.name == "Sindhi"
     assert language.stt_language == "snd"
     assert language.tts_provider == "elevenlabs"
     assert language.tts_voice == "EXAVITQu4vr4xnSDxMaL"

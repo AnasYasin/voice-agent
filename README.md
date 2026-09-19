@@ -11,7 +11,8 @@ phone line are next.
   while they speak, the model's reply is spoken a sentence at a time, and
   playback starts on the first chunk. About two seconds from the caller
   stopping to the agent starting, measured from Pakistan.
-- Four languages, one folder each under `lang/`. The demo page has a toggle.
+- Four languages, one folder each under `lang/`. The demo page has a dropdown,
+  and a fifth pack adds itself to it.
 - Every call is saved: transcript to Postgres, full-text searchable, and a
   stereo recording to S3, caller on the left and agent on the right.
 - A demo server with a passcode, a purpose box that becomes the system prompt
@@ -28,7 +29,7 @@ phone line are next.
 | Model | Claude Sonnet 5 for conversation at low thinking effort, and for slot extraction |
 | Turn taking | Silero voice detector at 16 kHz, half a second of silence ends a turn |
 | Storage | Postgres for transcripts, S3 for recordings |
-| Telephony, next | SIP softphone, then a GSM gateway |
+| Telephony, next | SIP softphone, then a GSM gateway and SIMs |
 
 ## Run it
 

@@ -10,7 +10,7 @@ changing AGENT_LANGUAGE in .env is enough to switch.
 
     language = load()          # from AGENT_LANGUAGE
     language = load("ur-PK")   # or explicitly
-    available()                # {"ur-PK": "اردو", "en-US": "English"}
+    available()                # {"ur-PK": "Urdu", "en-US": "English"}
 """
 
 from __future__ import annotations
