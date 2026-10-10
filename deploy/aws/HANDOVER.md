@@ -1,6 +1,6 @@
 # Handover: the demo on AWS
 
-Updated 18 Sep 2026. The demo is **up and serving**:
+Updated 30 Sep 2026. The demo is **up and serving**:
 
     https://13.203.35.195      passcode: change-me
 
@@ -53,7 +53,8 @@ docker compose --env-file ../../.env exec postgres psql -U agent -d voice_agent 
 
 Demo callers are stored under a `visitor-xxxxxxxx` caller id minted with their
 token, so the calls table tells the demo visitors apart. The page has a
-language toggle, Urdu and English, and a purpose box that becomes the system
+language dropdown with four languages (Deutsch, English, Urdu, Sindhi) and a
+purpose box that becomes the system
 prompt for that call with the house rules appended. Each call row says which
 language ran and, under `fields`, what the purpose was.
 
@@ -170,9 +171,8 @@ Recordings and transcripts land in `deploy/aws/calls/`.
 between strangers and three metered APIs. Change it in `.env` and
 `docker compose --env-file ../../.env up -d demo` to pick it up.
 
-**`vad_silence_seconds` is 0.25**, in `config/defaults.yaml`. Three real calls
-showed it cutting callers off mid-word. 0.4 is the safer value and is one line.
-Left at 0.25 deliberately.
+**`vad_silence_seconds` is 0.5**, in `config/defaults.yaml`. It was 0.25, and
+three real calls showed that cutting callers off mid-word.
 
 **An intermittent segfault**, recorded in `STREAMING.md`. The agent died once
 in six calls, in native code, as the caller joined. `restart: unless-stopped`
@@ -187,14 +187,14 @@ domain would close this.
 
 Verified on a laptop against real APIs:
 
-- 216 offline tests pass. 30 live tests pass.
+- 297 offline tests pass (30 Sep 2026). There are 51 live tests.
 - The demo server end to end: wrong passcode gives 403, right one returns a
   token, the agent joins LiveKit, the cap returns 429, the deadline frees the
   slot, and it refuses to start with no `DEMO_PASSCODE`.
 - The Docker image builds and contains ffmpeg.
 
-Verified on the box: everything under "Current state" above. Still not
-exercised on the box: a full browser call with audio both ways.
+Verified on the box: everything under "Current state" above, and a full
+browser call with audio both ways (17 Sep 2026, 14 turns).
 
 ## Three live tests still fail
 
@@ -218,6 +218,12 @@ Measured from Pakistan, per turn, after the region and model changes:
 It was 4.8 s. Two config changes fixed it: `AZURE_SPEECH_REGION` from `eastus`
 to `centralindia` (~500 ms), and `chat_model` from `claude-sonnet-5` to
 `claude-haiku-4-5` (~1.4 s).
+
+**This table is out of date.** Two things changed after it was measured.
+`chat_model` went back to `claude-sonnet-5` at low thinking effort, because
+Haiku sounded flat. `vad_silence_seconds` went from 0.25 to 0.5. The medians
+measured on 19 Sep were 2.96 s a turn for Sonnet at low effort and about 2 s
+for Haiku. The stage table has not been re-measured since.
 
 `STREAMING.md` still quotes 1830 ms, measured from Germany. Check where a number
 was measured before treating it as a regression.

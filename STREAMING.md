@@ -145,13 +145,14 @@ the writer must never wait on the reader.
 
 ## Still on the table
 
-- **Azure region.** `eastus` → `centralindia` or `uaenorth`. Config only, no
-  code. Three round trips per turn now sit on it, so it is worth more than it
-  was. Anas is doing this last, deliberately.
+- **Azure region.** Done. `AZURE_SPEECH_REGION` is `centralindia`, which took
+  about 500 ms off a turn. The tables above are still the `eastus` numbers,
+  measured from Germany. `deploy/aws/HANDOVER.md` has the Pakistan numbers.
 - **An intermittent segfault.** The agent died once in six calls, at the moment
   the caller joined, before any streaming code ran. Native, so either the
   LiveKit rtc bindings or Silero. Not reproducible on demand and not chased.
-- **The VAD window.** `vad_silence_seconds` is still 0.4 and is now the largest
+- **The VAD window.** `vad_silence_seconds` is 0.5. It was tried at 0.25, and
+  that cut callers off mid-word on three real calls. It is now the largest
   single thing left in the wait. Streaming STT means shortening it costs
   accuracy rather than latency, but how short is safe needs real recordings.
 
