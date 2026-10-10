@@ -80,7 +80,7 @@ def build_session(
             cache_dir=cache_dir,
             locale=language.locale,
         )
-    provider = os.getenv("STT_PROVIDER", "elevenlabs")
+    provider = language.stt_provider or os.getenv("STT_PROVIDER", "elevenlabs")
 
     return Session(
         language=language,

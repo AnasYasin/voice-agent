@@ -72,6 +72,9 @@ class Language:
     persona: str = ""
     greeting: str = ""
     time_up: str = ""
+    # Empty means whatever STT_PROVIDER in .env says, which is how every pack
+    # worked before Sindhi-1 needed a recognizer of its own.
+    stt_provider: str = ""
 
     def __repr__(self) -> str:  # keeps logs readable, the script is large
         return f"Language({self.locale}, voice={self.tts_voice}, script={self.script.name})"
@@ -125,6 +128,7 @@ def load(locale: str | None = None) -> Language:
         persona=persona,
         greeting=greeting,
         time_up=time_up,
+        stt_provider=getattr(manifest, "STT_PROVIDER", ""),
     )
     log.info("loaded %s", language)
     return language

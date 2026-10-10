@@ -15,8 +15,8 @@ pip install -e .          # else: ModuleNotFoundError: voice_agent
 
 ```bash
 docker compose up -d postgres   # the store tests and the agent both need it
-pytest -m "not live"            # 228 tests, no keys, no network
-pytest -m live                  # 45 tests, real APIs and Postgres, fraction of a cent
+pytest -m "not live"            # 297 tests, no keys, no network
+pytest -m live                  # 51 tests, real APIs and Postgres, fraction of a cent
 S3_BUCKET=<bucket> pytest -m live -k real_upload   # the upload test, against the real bucket
 ```
 
@@ -120,7 +120,8 @@ The demo page has a language dropdown and each caller picks their own.
 `AGENT_LANGUAGE` in `.env` only decides which one starts selected, and on the
 box that is `de-DE`. Urdu, English and German speak through Azure. Sindhi
 speaks through ElevenLabs, which needs the `text_to_speech` permission on
-`ELEVENLABS_API_KEY`. The order on the dropdown is each pack's own `ORDER`.
+`ELEVENLABS_API_KEY`. Sindhi-1 is the same pack heard through Gemini and needs
+`GEMINI_API_KEY`. The order on the dropdown is each pack's own `ORDER`.
 
 Talk mode is the one that exercises `lang/<code>/agent.yaml`. If you edited the
 persona and the agent still asks about an appointment, you are missing

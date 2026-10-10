@@ -24,7 +24,7 @@ phone line are next.
 | Layer | Choice |
 |---|---|
 | Media | LiveKit, self-hosted |
-| Recognizer | ElevenLabs Scribe, realtime, all four languages |
+| Recognizer | ElevenLabs Scribe, realtime. Sindhi-1 is the same Sindhi pack heard through Gemini 3.5 Transcribe, which can pin the Perso-Arabic script where Scribe cannot |
 | Voice | Azure for Urdu, English and German. ElevenLabs `eleven_v3` for Sindhi, which Azure cannot speak. Fixed lines cached |
 | Model | Claude Sonnet 5 for conversation at low thinking effort, and for slot extraction |
 | Turn taking | Silero voice detector at 16 kHz, half a second of silence ends a turn |

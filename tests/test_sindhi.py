@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import wave
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from voice_agent import tts
+from voice_agent import stt, tts
 from voice_agent.lang.sd.normalize import SindhiNormalizer, spoken_time
 from voice_agent.language import Normalizer, load
 
@@ -39,6 +40,77 @@ def test_the_script_has_the_same_shape_as_the_urdu_one() -> None:
 
 def test_the_normalizer_satisfies_the_protocol() -> None:
     assert isinstance(load("sd-PK").normalizer, Normalizer)
+
+
+def test_sindhi_1_is_the_same_pack_heard_through_gemini() -> None:
+    sindhi, sindhi_1 = load("sd-PK"), load("sd1-PK")
+
+    assert (sindhi_1.locale, sindhi_1.name) == ("sd1-PK", "Sindhi-1")
+    assert (sindhi_1.stt_provider, sindhi_1.stt_language) == ("gemini", "sd-Arab-IN")
+    assert sindhi.stt_provider == "", "every other pack still follows STT_PROVIDER"
+    assert (sindhi_1.tts_provider, sindhi_1.tts_voice) == (sindhi.tts_provider, sindhi.tts_voice)
+    assert sindhi_1.keyterms == sindhi.keyterms
+    assert sindhi_1.script.states.keys() == sindhi.script.states.keys()
+    assert (sindhi_1.persona, sindhi_1.greeting) == (sindhi.persona, sindhi.greeting)
+
+
+# --- the Gemini recognizer, with the websocket faked ---
+
+
+class FakeSocket:
+    def __init__(self) -> None:
+        self.sent: list[dict[str, Any]] = []
+
+    async def send(self, raw: str) -> None:
+        self.sent.append(json.loads(raw))
+
+    async def close(self) -> None:
+        pass
+
+
+async def test_gemini_commit_joins_the_finals_and_restarts_activity() -> None:
+    """The message shapes are the ones the live endpoint sent on 11 Oct 2026."""
+    ears = stt.GeminiStream("key", "model", "sd-Arab-IN", [])
+    ears._socket = FakeSocket()
+
+    ears._take({"serverContent": {"interimInputTranscription": {"text": "توھان جو"}}})
+    ears._take({"serverContent": {"inputTranscription": {"text": "توهان جو نالو"}}})
+    ears._take({"serverContent": {"inputTranscription": {"text": "ڇا آهي؟"}}})
+    ears._take({"serverContent": {"generationComplete": True}})
+    ears._take({"serverContent": {}, "voiceActivity": {"type": "ACTIVITY_END"}})
+
+    assert await ears.commit() == "توهان جو نالو ڇا آهي؟"
+    assert ears._socket.sent == [
+        {"realtimeInput": {"activityEnd": {}}},
+        {"realtimeInput": {"activityStart": {}}},
+    ]
+
+    ears._take({"serverContent": {"generationComplete": True}})
+    assert await ears.commit() == "", "the next turn starts empty"
+
+
+async def test_gemini_reopens_when_the_server_drops_an_empty_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ears = stt.GeminiStream("key", "model", "sd-Arab-IN", [])
+    ears._socket = FakeSocket()
+    reopened = []
+
+    async def reopen() -> None:
+        reopened.append(True)
+
+    monkeypatch.setattr(ears, "open", reopen)
+    ears._turns.put_nowait(RuntimeError("received 1008 (policy violation)"))
+
+    assert await ears.commit() == ""
+    assert reopened == [True]
+    assert ears._socket.sent == [{"realtimeInput": {"activityEnd": {}}}], (
+        "no start on a dead socket"
+    )
+
+
+def test_build_knows_gemini() -> None:
+    assert stt.build("gemini", "key", ["ها"]).name == "gemini-transcribe"
 
 
 @pytest.mark.parametrize(

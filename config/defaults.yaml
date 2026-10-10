@@ -46,6 +46,10 @@ stt:
   elevenlabs_model: scribe_v1
   elevenlabs_realtime_model: scribe_v2_realtime
   deepgram_model: nova-3
+  # Gemini's streaming transcriber, for packs that name `gemini` as their
+  # recognizer. Sindhi-1 is the first: Scribe cannot pin the script and this
+  # one can, through a language code with a script subtag.
+  gemini_realtime_model: gemini-3.5-transcribe-live
 
 tts:
   # Synthesis stays wideband. audio.to_telephone is the single place that makes

@@ -52,6 +52,7 @@ class SttConfig:
     elevenlabs_model: str
     deepgram_model: str
     elevenlabs_realtime_model: str = "scribe_v2_realtime"
+    gemini_realtime_model: str = "gemini-3.5-transcribe-live"
 
 
 @dataclass(frozen=True)
