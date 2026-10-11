@@ -22,14 +22,26 @@ people's voices.
 ## Run it
 
 ```
-make install-eval
-make prep      # band-limit to 8 kHz telephone audio
-make eval      # score ElevenLabs Scribe vs Deepgram Nova-3
+make prep                                                     # band-limit to 8 kHz
+python eval/run_stt_eval.py --pack ur-PK                      # Urdu, eval/expected.csv
+python eval/run_stt_eval.py --pack sd-PK --expected eval/expected_sd.csv
 ```
+
+Every recognizer with a key in `.env` runs: Scribe v1 file, Scribe v2 realtime,
+Gemini Live, Gemini batch, Deepgram Nova-3. Results land in `eval/results_<pack>.md`
+with WER and CER per recognizer and every transcript next to its reference.
+
+## Known sentences, Sindhi
+
+`expected_sd.csv` lists nine sentences with the filename each recording must
+have, `sd_01.wav` to `sd_09.wav`. Record each one, drop the files in
+`samples/raw/`, run the two commands above. Four are human translations from
+FLORES-200, five are the appointment script's own vocabulary.
 
 ## Fill in expected.csv
 
-One row per sample. `expected_slot` is the thing that actually matters.
+One row per sample. `transcript` is what was said; `expected_slot` is the thing
+that actually matters.
 
 ## What the result means
 

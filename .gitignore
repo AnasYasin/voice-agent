@@ -7,6 +7,7 @@
 eval/samples/*
 !eval/samples/.gitkeep
 eval/results_*.csv
+eval/results_*.md
 recordings/
 audio_cache/
 
