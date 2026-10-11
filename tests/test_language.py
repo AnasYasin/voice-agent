@@ -116,7 +116,6 @@ def test_every_pack_on_disk_is_listed_with_its_name() -> None:
         ("en-US", "English"),
         ("ur-PK", "Urdu"),
         ("sd-PK", "Sindhi"),
-        ("sd1-PK", "Sindhi-1"),
     ], "each pack's ORDER decides where it sits on the toggle"
 
 

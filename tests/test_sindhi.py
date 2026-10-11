@@ -21,9 +21,9 @@ def test_sindhi_loads_on_the_elevenlabs_voice() -> None:
 
     assert language.locale == "sd-PK"
     assert language.name == "Sindhi"
-    assert language.stt_language == "snd"
+    assert (language.stt_provider, language.stt_language) == ("gemini", "sd-Arab-IN")
     assert language.tts_provider == "elevenlabs"
-    assert language.tts_voice == "EXAVITQu4vr4xnSDxMaL"
+    assert language.tts_voice == "QfY4EJSXrwbmN0wR4597"
 
 
 def test_urdu_and_english_still_name_azure() -> None:
@@ -42,16 +42,8 @@ def test_the_normalizer_satisfies_the_protocol() -> None:
     assert isinstance(load("sd-PK").normalizer, Normalizer)
 
 
-def test_sindhi_1_is_the_same_pack_heard_through_gemini() -> None:
-    sindhi, sindhi_1 = load("sd-PK"), load("sd1-PK")
-
-    assert (sindhi_1.locale, sindhi_1.name) == ("sd1-PK", "Sindhi-1")
-    assert (sindhi_1.stt_provider, sindhi_1.stt_language) == ("gemini", "sd-Arab-IN")
-    assert sindhi.stt_provider == "", "every other pack still follows STT_PROVIDER"
-    assert (sindhi_1.tts_provider, sindhi_1.tts_voice) == (sindhi.tts_provider, sindhi.tts_voice)
-    assert sindhi_1.keyterms == sindhi.keyterms
-    assert sindhi_1.script.states.keys() == sindhi.script.states.keys()
-    assert (sindhi_1.persona, sindhi_1.greeting) == (sindhi.persona, sindhi.greeting)
+def test_only_sindhi_names_its_own_recognizer() -> None:
+    assert load("ur-PK").stt_provider == "", "every other pack still follows STT_PROVIDER"
 
 
 # --- the Gemini recognizer, with the websocket faked ---
@@ -126,6 +118,19 @@ def test_from_speech(raw: str, expected: str) -> None:
     assert normalizer.from_speech(raw) == expected
 
 
+def test_for_speech_turns_urdu_letters_into_sindhi_ones() -> None:
+    assert normalizer.for_speech("میرو نالو ہے") == "ميرو نالو هي"
+    assert normalizer.for_speech("ڪتاب ۾ ڳالهه") == "ڪتاب ۾ ڳالهه", "Sindhi letters pass untouched"
+
+
+def test_how_to_speak_sindhi_rides_with_the_persona() -> None:
+    language = load("sd-PK")
+
+    assert "Vicholi" in language.speech
+    assert language.persona.endswith(language.speech)
+    assert load("ur-PK").speech == "", "other packs have not written one"
+
+
 def test_spoken_time_uses_part_of_day_hour_word_and_wagi() -> None:
     assert spoken_time(15, 0) == "منجهند ٽي وڳي"
     assert spoken_time(9, 30) == "صبح نو وڳي 30 منٽ"
@@ -189,7 +194,7 @@ def test_synthesize_writes_a_16khz_wav_from_pcm(tmp_path: Path) -> None:
     with wave.open(str(speech.path)) as tape:
         assert (tape.getframerate(), tape.getnchannels(), tape.getnframes()) == (16000, 1, 1600)
     assert client.text_to_speech.requests[0]["output_format"] == "pcm_16000"
-    assert client.text_to_speech.requests[0]["model_id"] == "eleven_v3"
+    assert client.text_to_speech.requests[0]["model_id"] == "eleven_v4"
 
 
 async def test_stream_asks_for_ulaw_and_hands_back_pcm() -> None:

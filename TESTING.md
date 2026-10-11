@@ -120,7 +120,7 @@ The demo page has a language dropdown and each caller picks their own.
 `AGENT_LANGUAGE` in `.env` only decides which one starts selected, and on the
 box that is `de-DE`. Urdu, English and German speak through Azure. Sindhi
 speaks through ElevenLabs, which needs the `text_to_speech` permission on
-`ELEVENLABS_API_KEY`. Sindhi-1 is the same pack heard through Gemini and needs
+`ELEVENLABS_API_KEY`. Sindhi hears through Gemini and needs
 `GEMINI_API_KEY`. The order on the dropdown is each pack's own `ORDER`.
 
 Talk mode is the one that exercises `lang/<code>/agent.yaml`. If you edited the

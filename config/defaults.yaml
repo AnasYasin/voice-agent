@@ -47,7 +47,7 @@ stt:
   elevenlabs_realtime_model: scribe_v2_realtime
   deepgram_model: nova-3
   # Gemini's streaming transcriber, for packs that name `gemini` as their
-  # recognizer. Sindhi-1 is the first: Scribe cannot pin the script and this
+  # recognizer. Sindhi is the first: Scribe cannot pin the script and this
   # one can, through a language code with a script subtag.
   gemini_realtime_model: gemini-3.5-transcribe-live
 
@@ -69,11 +69,12 @@ tts:
   lookahead_seconds: 3.0
 
   # The ElevenLabs voice model, for languages Azure has no voice for. Sindhi is
-  # the first. eleven_v3 lists Sindhi and Urdu among 70+ languages; the older
-  # multilingual and flash models do not. Roughly eleven times Azure's price
+  # the first. v3, v4 and multilingual v2 all accept Sindhi; a native speaker
+  # heard the same sentence in the same voice on all three on 11 Oct 2026 and
+  # picked v4. Flash does not speak Sindhi. Roughly eleven times Azure's price
   # per character, which the cache absorbs on scripted lines and talk mode pays
   # on every sentence. See voice_agent_costs.md.
-  elevenlabs_model: eleven_v3
+  elevenlabs_model: eleven_v4
 
 evaluation:
   # A line worse than this is flagged in the roundtrip report. It is a reading

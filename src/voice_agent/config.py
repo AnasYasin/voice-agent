@@ -59,7 +59,7 @@ class SttConfig:
 class TtsConfig:
     sample_rate: int
     lookahead_seconds: float = 1.5
-    elevenlabs_model: str = "eleven_v3"
+    elevenlabs_model: str = "eleven_v4"
 
 
 @dataclass(frozen=True)

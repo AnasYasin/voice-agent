@@ -72,8 +72,11 @@ class Language:
     persona: str = ""
     greeting: str = ""
     time_up: str = ""
+    # How to speak the language, kept apart from the persona so a call that
+    # brings its own persona, as the demo does, still gets it.
+    speech: str = ""
     # Empty means whatever STT_PROVIDER in .env says, which is how every pack
-    # worked before Sindhi-1 needed a recognizer of its own.
+    # worked before Sindhi needed a recognizer of its own.
     stt_provider: str = ""
 
     def __repr__(self) -> str:  # keeps logs readable, the script is large
@@ -109,9 +112,11 @@ def load(locale: str | None = None) -> Language:
     persona = ""
     greeting = ""
     time_up = ""
+    speech = ""
     if agent_path.exists():
         profile = yaml.safe_load(agent_path.read_text(encoding="utf-8"))
-        persona = profile.get("persona", "")
+        speech = profile.get("speech", "")
+        persona = "\n\n".join(part for part in (profile.get("persona", ""), speech) if part)
         greeting = profile.get("greeting", "")
         time_up = profile.get("time_up", "")
 
@@ -128,6 +133,7 @@ def load(locale: str | None = None) -> Language:
         persona=persona,
         greeting=greeting,
         time_up=time_up,
+        speech=speech,
         stt_provider=getattr(manifest, "STT_PROVIDER", ""),
     )
     log.info("loaded %s", language)
