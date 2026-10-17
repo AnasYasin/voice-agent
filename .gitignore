@@ -32,3 +32,4 @@ venv/
 # Agent tooling scratch space
 .claude/
 calls/
+CLAUDE.local.md
