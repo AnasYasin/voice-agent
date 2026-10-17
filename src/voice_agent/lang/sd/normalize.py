@@ -20,6 +20,10 @@ ARABIC_INDIC = "٠١٢٣٤٥٦٧٨٩"
 ASCII_DIGITS = "0123456789"
 
 _TO_ASCII_DIGITS = str.maketrans(EXTENDED_ARABIC_INDIC + ARABIC_INDIC, ASCII_DIGITS + ASCII_DIGITS)
+# Urdu letters that Sindhi never uses, to the Sindhi letter for the same sound,
+# so the voice does not read a stray one with Urdu pronunciation. The model
+# wrote "میرو" on a 10 Oct 2026 call. ک and ھ stay: Sindhi uses both.
+_URDU_TO_SINDHI = str.maketrans("یہےںٹڈڑۃك", "يهينٽڊڙهڪ")
 _PUNCTUATION = re.compile(r"[۔،؟!?.,;:\"'()\[\]]")
 _WHITESPACE = re.compile(r"\s+")
 _TIME = re.compile(r"\b([01]?\d|2[0-3]):([0-5]\d)\b")
@@ -44,6 +48,7 @@ class SindhiNormalizer:
         return _WHITESPACE.sub(" ", text).strip().lower()
 
     def for_speech(self, text: str) -> str:
+        text = text.translate(_URDU_TO_SINDHI)
         return _TIME.sub(lambda match: spoken_time(int(match.group(1)), int(match.group(2))), text)
 
     def sentences(self, text: str) -> tuple[list[str], str]:

@@ -1,34 +1,45 @@
 # Voice Agent
 
-An outbound phone agent for Pakistan. It calls a lead, holds a short spoken
-conversation in Urdu, English or Sindhi, and records the outcome and the
-transcript. Today it runs in the browser through a demo page. SIP and a real
-phone line are next.
+A browser demo of a voice agent. The main focus is Sindhi. The goal is the
+first voice agent that holds a spoken conversation in Sindhi.
+
+You open a page, pick a language and talk. The agent replies in speech. Each
+call is saved with its transcript and a recording. Urdu, English and German
+work too.
+
+## Sindhi
+
+- STT is Gemini 3.5 Transcribe Live. It can be pinned to the Perso-Arabic
+  script, so Sindhi comes back in Sindhi script.
+- TTS is ElevenLabs `eleven_v4` with the voice Marvi. Azure has no Sindhi
+  voice.
+- The pack lives in `lang/sd/`, with its own normaliser, script and persona.
 
 ## What works
 
-- A live call streams at every stage: the caller's audio reaches the recognizer
-  while they speak, the model's reply is spoken a sentence at a time, and
-  playback starts on the first chunk. About two seconds from the caller
-  stopping to the agent starting, measured from Pakistan.
-- Three languages, one folder each under `lang/`. The demo page has a toggle.
-- Every call is saved: transcript to Postgres, full-text searchable, and a
-  stereo recording to S3, caller on the left and agent on the right.
-- A demo server with a passcode, a purpose box that becomes the system prompt
-  for that call, a call limit with a spoken goodbye, and a page that shows who
-  is talking.
+- The call streams at every stage. The caller's audio reaches the STT while
+  they speak. The reply is spoken a sentence at a time, and playback starts on
+  the first chunk. The agent starts about two seconds after the caller stops,
+  measured from Pakistan.
+- Four languages, one folder each under `lang/`. The demo page has a dropdown,
+  and a new pack adds itself to it.
+- Every call is saved. The transcript goes to Postgres and is full-text
+  searchable. A stereo recording goes to S3, caller on the left and agent on
+  the right.
+- The demo server has a passcode and a purpose box that becomes the system
+  prompt for that call. It ends a call at a time limit with a spoken goodbye,
+  and the page shows who is talking.
 
 ## Stack
 
 | Layer | Choice |
 |---|---|
 | Media | LiveKit, self-hosted |
-| Recognizer | ElevenLabs Scribe, realtime, all three languages |
-| Voice | Azure for Urdu and English. ElevenLabs `eleven_v3` for Sindhi, which Azure cannot speak. Fixed lines cached |
-| Model | Claude Haiku 4.5 for conversation, Claude Sonnet 5 for slot extraction |
-| Turn taking | Silero voice detector at 16 kHz, half a second of silence ends a turn |
+| STT | Gemini 3.5 Transcribe Live for Sindhi. ElevenLabs Scribe realtime for Urdu, English and German |
+| TTS | ElevenLabs `eleven_v4`, voice Marvi, for Sindhi. Azure for Urdu, English and German. Fixed lines cached |
+| LLM | Claude Sonnet 5 at low thinking effort, for the conversation and for slot extraction |
+| VAD | Silero at 16 kHz, half a second of silence ends a turn |
 | Storage | Postgres for transcripts, S3 for recordings |
-| Telephony, next | SIP softphone, then a GSM gateway |
 
 ## Run it
 
@@ -68,7 +79,7 @@ src/voice_agent/
   audio.py      telephone band filter, recordings
   store.py      Postgres and S3
   language.py   loads one language pack
-  lang/ur/ lang/en/ lang/sd/   voice, normaliser, script, persona per language
+  lang/ur/ lang/en/ lang/de/ lang/sd/   voice, normaliser, script, persona per language
 web/            the demo page
 scripts/        diagnostics, e.g. replay a recording through the voice detector
 eval/           the Phase 0 accuracy harness
@@ -77,10 +88,3 @@ eval/           the Phase 0 accuracy harness
 Two rules the tests enforce. Nothing language-specific lives outside `lang/`,
 so a new language is a folder. Only `main.py` reads the environment, so every
 component is handed what it needs.
-
-## Not done
-
-- Phase 0, the accuracy gate. Recognizer accuracy for Urdu and Sindhi is
-  unmeasured on real phone audio. It needs 25 to 30 real recordings.
-- Every Sindhi line was written without a native speaker and needs one.
-- SIP and PSTN transports, lead import and the dialer.

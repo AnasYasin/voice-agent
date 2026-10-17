@@ -23,10 +23,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
+
+import websockets
 
 from voice_agent.config import settings
 
@@ -233,14 +236,165 @@ class DeepgramSTT:
         )
 
 
+GEMINI_LIVE_URL = (
+    "wss://generativelanguage.googleapis.com/ws/"
+    "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+)
+
+
+class GeminiSTT:
+    """Gemini 3.5 Transcribe, over the Live API websocket.
+
+    Here because Scribe has no way to pin a script, and on Sindhi it swings
+    between Perso-Arabic and Devanagari from one call to the next (10 Oct
+    2026). Gemini takes a BCP-47 code with a script subtag, `sd-Arab-IN`, so
+    the script is fixed by the language code.
+    """
+
+    name = "gemini-transcribe"
+
+    def __init__(
+        self, api_key: str, keyterms: list[str] | None = None, model_id: str | None = None
+    ) -> None:
+        self.api_key = api_key
+        self.keyterms = keyterms or []
+        self.model_id = model_id or settings.stt.gemini_realtime_model
+
+    def stream(self, language: str) -> GeminiStream:
+        return GeminiStream(self.api_key, self.model_id, language, self.keyterms)
+
+    def transcribe(self, path: Path, language: str) -> Transcript:
+        """The same websocket, fed one file as one turn. Lets the accuracy gate
+        score this provider on the audio the others are scored on."""
+        from voice_agent.audio import pcm
+
+        async def one_turn() -> str:
+            ears = self.stream(language)
+            await ears.open()
+            try:
+                audio = pcm(path)
+                step = settings.audio.sample_rate * 2 // 10  # 100 ms, as the docs ask
+                for at in range(0, len(audio), step):
+                    await ears.push(audio[at : at + step])
+                return await ears.commit()
+            finally:
+                await ears.close()
+
+        log.info("[%s] transcribing %s", self.name, path.name)
+        return Transcript(text=asyncio.run(one_turn()), provider=self.name)
+
+
+class GeminiStream:
+    """One Live API websocket for the whole call, with the server's own voice
+    detection off. The session already runs a VAD, so a turn is whatever
+    arrives between one commit and the next: `activityStart` after each commit,
+    `activityEnd` on the next. The final transcript for the turn arrives as
+    `inputTranscription` and `generationComplete` closes it (probed 11 Oct
+    2026 on an 8 kHz Sindhi recording). Interim transcripts are ignored.
+    """
+
+    name = "gemini-transcribe-live"
+
+    def __init__(self, api_key: str, model_id: str, language: str, keyterms: list[str]) -> None:
+        self.api_key = api_key
+        self.model_id = model_id
+        self.language = language
+        self.keyterms = keyterms
+        self._socket: Any = None
+        self._reader: asyncio.Task[None] | None = None
+        self._heard: list[str] = []
+        self._turns: asyncio.Queue[str | Exception] = asyncio.Queue()
+
+    async def open(self) -> None:
+        log.info("[%s] opening for %s", self.name, self.language)
+        self._heard.clear()
+        self._socket = await websockets.connect(
+            GEMINI_LIVE_URL, additional_headers={"x-goog-api-key": self.api_key}, max_size=None
+        )
+        await self._send(
+            {
+                "setup": {
+                    "model": f"models/{self.model_id}",
+                    "generationConfig": {"responseModalities": ["TEXT"]},
+                    "inputAudioTranscription": {
+                        "languageCodes": [self.language],
+                        "customVocabulary": self.keyterms or None,
+                    },
+                    "realtimeInputConfig": {"automaticActivityDetection": {"disabled": True}},
+                }
+            }
+        )
+        first = json.loads(await self._socket.recv())
+        if "setupComplete" not in first:
+            raise RuntimeError(f"{self.name} refused the setup: {first}")
+        self._reader = asyncio.create_task(self._listen())
+        await self._send({"realtimeInput": {"activityStart": {}}})
+
+    async def push(self, pcm: bytes) -> None:
+        await self._send(
+            {
+                "realtimeInput": {
+                    "audio": {
+                        "data": base64.b64encode(pcm).decode(),
+                        "mimeType": f"audio/pcm;rate={settings.audio.sample_rate}",
+                    }
+                }
+            }
+        )
+
+    async def commit(self) -> str:
+        await self._send({"realtimeInput": {"activityEnd": {}}})
+        heard = await self._turns.get()
+        if isinstance(heard, Exception):
+            # The server drops the socket with 1008 "operation was aborted" on a
+            # turn that held no speech: silence, breath, a false start from the
+            # VAD (probed 11 Oct 2026, three quiet windows, one of them pure
+            # silence). Real calls have runs of those. So an empty turn is an
+            # empty turn, and the call carries on over a fresh socket.
+            log.warning("[%s] connection dropped, reopening: %s", self.name, heard)
+            await self.close()
+            await self.open()
+            return ""
+        await self._send({"realtimeInput": {"activityStart": {}}})
+        return heard.strip()
+
+    async def close(self) -> None:
+        if self._reader:
+            self._reader.cancel()
+        await self._socket.close()
+
+    async def _send(self, message: dict[str, Any]) -> None:
+        try:
+            await self._socket.send(json.dumps(message))
+        except websockets.ConnectionClosed:
+            pass  # the reader has already queued the failure for commit to handle
+
+    async def _listen(self) -> None:
+        try:
+            async for raw in self._socket:
+                self._take(json.loads(raw))
+        except Exception as error:  # a dead socket must wake whoever is waiting on commit
+            self._turns.put_nowait(RuntimeError(f"{self.name} failed: {error}"))
+
+    def _take(self, message: dict[str, Any]) -> None:
+        content = message.get("serverContent") or {}
+        if final := content.get("inputTranscription"):
+            self._heard.append(final.get("text", ""))
+        if content.get("generationComplete") or content.get("turnComplete"):
+            self._turns.put_nowait(" ".join(self._heard))
+            self._heard.clear()
+
+
 def build(provider: str, api_key: str, keyterms: list[str] | None = None) -> SpeechToText:
     """Pick a provider by name. Called by language.py and the eval harness.
 
-    Both providers take the same keyterms. Giving them to only one would make
+    Every provider takes the same keyterms. Giving them to only one would make
     the accuracy comparison meaningless.
     """
     if provider == "elevenlabs":
         return ElevenLabsSTT(api_key, keyterms)
     if provider == "deepgram":
         return DeepgramSTT(api_key, keyterms)
-    raise ValueError(f"unknown STT provider {provider!r}, expected elevenlabs or deepgram")
+    if provider == "gemini":
+        return GeminiSTT(api_key, keyterms)
+    raise ValueError(f"unknown STT provider {provider!r}, expected elevenlabs, deepgram or gemini")

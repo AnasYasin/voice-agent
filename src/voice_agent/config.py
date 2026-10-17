@@ -52,13 +52,14 @@ class SttConfig:
     elevenlabs_model: str
     deepgram_model: str
     elevenlabs_realtime_model: str = "scribe_v2_realtime"
+    gemini_realtime_model: str = "gemini-3.5-transcribe-live"
 
 
 @dataclass(frozen=True)
 class TtsConfig:
     sample_rate: int
     lookahead_seconds: float = 1.5
-    elevenlabs_model: str = "eleven_v3"
+    elevenlabs_model: str = "eleven_v4"
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,8 @@ class LlmConfig:
     model: str
     max_tokens: int
     chat_model: str = ""
+    chat_effort: str = "low"
+    chat_thinking: bool = False
     chat_max_tokens: int = 160
     memory_turns: int = 20
 

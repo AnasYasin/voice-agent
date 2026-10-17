@@ -111,7 +111,12 @@ def test_language_type_is_exported() -> None:
 
 def test_every_pack_on_disk_is_listed_with_its_name() -> None:
     """This is what the language toggle shows. A new folder is a new button."""
-    assert available() == {"ur-PK": "اردو", "en-US": "English", "sd-PK": "سنڌي"}
+    assert list(available().items()) == [
+        ("de-DE", "Deutsch"),
+        ("en-US", "English"),
+        ("ur-PK", "Urdu"),
+        ("sd-PK", "Sindhi"),
+    ], "each pack's ORDER decides where it sits on the toggle"
 
 
 def test_the_default_locale_follows_the_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -123,7 +128,7 @@ def test_the_default_locale_follows_the_env_var(monkeypatch: pytest.MonkeyPatch)
 
 def test_each_language_knows_its_own_name() -> None:
     """The toggle label, and what a composed persona tells the model to speak."""
-    assert load("ur-PK").name == "اردو"
+    assert load("ur-PK").name == "Urdu"
     assert load("en-US").name == "English"
 
 

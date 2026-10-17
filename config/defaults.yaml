@@ -46,6 +46,10 @@ stt:
   elevenlabs_model: scribe_v1
   elevenlabs_realtime_model: scribe_v2_realtime
   deepgram_model: nova-3
+  # Gemini's streaming transcriber, for packs that name `gemini` as their
+  # recognizer. Sindhi is the first: Scribe cannot pin the script and this
+  # one can, through a language code with a script subtag.
+  gemini_realtime_model: gemini-3.5-transcribe-live
 
 tts:
   # Synthesis stays wideband. audio.to_telephone is the single place that makes
@@ -65,11 +69,12 @@ tts:
   lookahead_seconds: 3.0
 
   # The ElevenLabs voice model, for languages Azure has no voice for. Sindhi is
-  # the first. eleven_v3 lists Sindhi and Urdu among 70+ languages; the older
-  # multilingual and flash models do not. Roughly eleven times Azure's price
+  # the first. v3, v4 and multilingual v2 all accept Sindhi; a native speaker
+  # heard the same sentence in the same voice on all three on 11 Oct 2026 and
+  # picked v4. Flash does not speak Sindhi. Roughly eleven times Azure's price
   # per character, which the cache absorbs on scripted lines and talk mode pays
   # on every sentence. See voice_agent_costs.md.
-  elevenlabs_model: eleven_v3
+  elevenlabs_model: eleven_v4
 
 evaluation:
   # A line worse than this is flagged in the roundtrip report. It is a reading
@@ -99,10 +104,29 @@ llm:
   # Most of the gap is time to first token, not thinking: a max_tokens=1 call
   # is 766 ms on Haiku and 1638 ms on Sonnet 5.
   #
-  # Haiku is fast and flat. Flat cost real jokes when the persona was a
-  # comedian, and costs nothing now that agent.yaml is a neutral helper.
-  # Go back to claude-sonnet-5 if the persona ever needs wit again.
-  chat_model: claude-haiku-4-5
+  # Switched from claude-haiku-4-5 to Sonnet 5 on 19 Sep 2026. Anas wanted the
+  # agent to sound smarter, and the purpose box now carries a real brief that
+  # a stronger model follows better. The cost is the gap above, roughly 1.4 s
+  # added to every turn, and double the price per token. Go back to
+  # claude-haiku-4-5 if callers start complaining about the wait.
+  chat_model: claude-sonnet-5
+
+  # Whether the chat model thinks before speaking, and how hard.
+  #
+  # Measured from Pakistan on 19 Sep 2026, median of three live turns:
+  #
+  #   sonnet 5, thinking high (the default)   3960 ms
+  #   sonnet 5, thinking low                  2960 ms
+  #   sonnet 5, thinking off                  2970 ms
+  #   haiku 4.5                              ~2000 ms
+  #
+  # Low effort and no thinking measure the same, so thinking stays on at low
+  # effort: it is the documented lever and it avoids the failure modes that
+  # come with switching thinking off. The second left over against Haiku is
+  # Sonnet's time to first token, not deliberation, and no setting removes it.
+  # Raise the effort if replies ever sound thin.
+  chat_thinking: true
+  chat_effort: low
   # A ceiling, not a length control. Urdu costs several tokens per word and the
   # reply is wrapped in JSON, so a tight limit truncates mid-string and the
   # parse fails. Keep it generous and let the prompt ask for brevity.

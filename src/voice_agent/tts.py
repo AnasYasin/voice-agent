@@ -1,5 +1,9 @@
-"""Components 5 and 11. Azure Neural Urdu voice, plus the cache that replays
-fixed script lines from disk instead of calling the API.
+"""Components 5 and 11. The voices, plus the cache that replays fixed script
+lines from disk instead of calling the API.
+
+Two providers behind one shape. Azure speaks Urdu, English and German. Sindhi
+goes to ElevenLabs, which is the only one of the two that speaks it. Which one
+a language uses is named in its pack, never decided here.
 
 Synthesis produces clean wideband audio. It is deliberately not band-limited
 here: `audio.to_telephone` is the single place that makes something sound like

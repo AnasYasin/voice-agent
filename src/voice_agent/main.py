@@ -63,7 +63,9 @@ def build_session(
     language = language_module.load(locale)
     if persona:
         # The pack's greeting goes with its persona. The model opens in character.
-        language = replace(language, persona=persona, greeting="")
+        # How to speak the language is not the persona's to drop.
+        spoken_as = f"{persona}\n\n{language.speech}" if language.speech else persona
+        language = replace(language, persona=spoken_as, greeting="")
 
     cache_dir = Path(os.getenv("TTS_CACHE_DIR", "./audio_cache"))
     if language.tts_provider == "elevenlabs":
@@ -80,7 +82,7 @@ def build_session(
             cache_dir=cache_dir,
             locale=language.locale,
         )
-    provider = os.getenv("STT_PROVIDER", "elevenlabs")
+    provider = language.stt_provider or os.getenv("STT_PROVIDER", "elevenlabs")
 
     return Session(
         language=language,

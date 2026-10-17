@@ -223,12 +223,14 @@ async def healthz(request: web.Request) -> web.Response:
 
 
 async def languages(request: web.Request) -> web.Response:
-    """What the toggle shows, default first, and which one starts selected."""
+    """What the toggle shows, in the order the packs ask for, and which one
+    starts selected. The default decides the selection, not the position."""
     demo = request.app[DEMO]
-    ordered = sorted(demo.languages, key=lambda locale: locale != demo.default_language)
     return web.json_response(
         {
-            "languages": [{"locale": locale, "name": demo.languages[locale]} for locale in ordered],
+            "languages": [
+                {"locale": locale, "name": name} for locale, name in demo.languages.items()
+            ],
             "default": demo.default_language,
         }
     )

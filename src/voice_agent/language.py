@@ -10,7 +10,7 @@ changing AGENT_LANGUAGE in .env is enough to switch.
 
     language = load()          # from AGENT_LANGUAGE
     language = load("ur-PK")   # or explicitly
-    available()                # {"ur-PK": "اردو", "en-US": "English"}
+    available()                # {"ur-PK": "Urdu", "en-US": "English"}
 """
 
 from __future__ import annotations
@@ -40,13 +40,15 @@ def default_locale() -> str:
 
 
 def available() -> dict[str, str]:
-    """Every language pack on disk, locale to display name. This is what a
-    language toggle shows, so adding a folder adds a button."""
-    packs = {}
-    for manifest_path in sorted(PACKS_DIR.glob("*/voice.py")):
-        manifest = importlib.import_module(f"voice_agent.lang.{manifest_path.parent.name}.voice")
-        packs[manifest.LOCALE] = manifest.NAME
-    return packs
+    """Every language pack on disk, locale to display name, in the order each
+    pack asks for. This is what a language toggle shows, so adding a folder
+    adds a button and its ORDER decides where it lands."""
+    manifests = [
+        importlib.import_module(f"voice_agent.lang.{path.parent.name}.voice")
+        for path in sorted(PACKS_DIR.glob("*/voice.py"))
+    ]
+    manifests.sort(key=lambda manifest: (getattr(manifest, "ORDER", 99), manifest.LOCALE))
+    return {manifest.LOCALE: manifest.NAME for manifest in manifests}
 
 
 @runtime_checkable
@@ -70,6 +72,12 @@ class Language:
     persona: str = ""
     greeting: str = ""
     time_up: str = ""
+    # How to speak the language, kept apart from the persona so a call that
+    # brings its own persona, as the demo does, still gets it.
+    speech: str = ""
+    # Empty means whatever STT_PROVIDER in .env says, which is how every pack
+    # worked before Sindhi needed a recognizer of its own.
+    stt_provider: str = ""
 
     def __repr__(self) -> str:  # keeps logs readable, the script is large
         return f"Language({self.locale}, voice={self.tts_voice}, script={self.script.name})"
@@ -104,9 +112,11 @@ def load(locale: str | None = None) -> Language:
     persona = ""
     greeting = ""
     time_up = ""
+    speech = ""
     if agent_path.exists():
         profile = yaml.safe_load(agent_path.read_text(encoding="utf-8"))
-        persona = profile.get("persona", "")
+        speech = profile.get("speech", "")
+        persona = "\n\n".join(part for part in (profile.get("persona", ""), speech) if part)
         greeting = profile.get("greeting", "")
         time_up = profile.get("time_up", "")
 
@@ -123,6 +133,8 @@ def load(locale: str | None = None) -> Language:
         persona=persona,
         greeting=greeting,
         time_up=time_up,
+        speech=speech,
+        stt_provider=getattr(manifest, "STT_PROVIDER", ""),
     )
     log.info("loaded %s", language)
     return language

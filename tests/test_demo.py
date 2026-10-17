@@ -22,7 +22,7 @@ from voice_agent import demo as demo_module
 from voice_agent.demo import PURPOSE_LIMIT, Demo, build_app, compose_persona
 
 CODE = "open-sesame"
-LANGUAGES = {"languages": {"ur-PK": "اردو", "en-US": "English"}, "default_language": "ur-PK"}
+LANGUAGES = {"languages": {"ur-PK": "Urdu", "en-US": "English"}, "default_language": "ur-PK"}
 
 
 class FakeStore:
@@ -158,7 +158,7 @@ async def test_the_page_can_ask_which_languages_exist() -> None:
         body = await (await client.get("/api/languages")).json()
 
     assert body == {
-        "languages": [{"locale": "ur-PK", "name": "اردو"}, {"locale": "en-US", "name": "English"}],
+        "languages": [{"locale": "ur-PK", "name": "Urdu"}, {"locale": "en-US", "name": "English"}],
         "default": "ur-PK",
     }
 
@@ -196,7 +196,7 @@ def test_a_default_language_without_a_pack_refuses_to_start() -> None:
             passcode="x",
             public_url="wss://example/rtc",
             store=FakeStore(),
-            languages={"ur-PK": "اردو"},
+            languages={"ur-PK": "Urdu"},
             default_language="fr-FR",
         )
 

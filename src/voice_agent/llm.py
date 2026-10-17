@@ -244,6 +244,19 @@ class StreamingResponder(Protocol):
     ) -> Utterance: ...
 
 
+def _pace() -> dict[str, Any]:
+    """How hard the chat model thinks before it speaks.
+
+    Sonnet 5 thinks by default and at the default effort that measured 3.96 s a
+    turn against Haiku's ~2 s, which a caller hears as the agent being slow. A
+    spoken reply of one or two sentences has nothing to deliberate over, so
+    thinking is off by default and the effort knob is there if it is turned on.
+    """
+    if not settings.llm.chat_thinking:
+        return {"thinking": {"type": "disabled"}}
+    return {"output_config": {"effort": settings.llm.chat_effort}}
+
+
 class ClaudeExtractor:
     name = "claude"
 
@@ -357,6 +370,7 @@ class ClaudeResponder:
             system=self._system(asking, persona, _HANGING_UP),
             messages=self._messages(said, asking, history),
             stop_sequences=[END_CALL],
+            **_pace(),
         )
 
     def _system(self, asking: str, persona: str, extra: str = "") -> list[dict[str, Any]]:

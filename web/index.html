@@ -27,17 +27,24 @@
   header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
   header h1 { font-size: 1rem; margin: 0; font-weight: 650; }
   .controls { display: flex; align-items: center; gap: .5rem; }
-  #languages { display: flex; gap: .15rem; padding: .15rem; border: 1px solid var(--line); border-radius: .5rem; }
-  #languages button {
-    padding: .3rem .65rem; font: inherit; font-size: .8rem; font-weight: 600;
-    border: 0; border-radius: .35rem; cursor: pointer; background: transparent; color: inherit;
-  }
-  #languages button[aria-pressed="true"] { background: var(--accent); color: #fff; }
-  .code-label { font-size: .8rem; font-weight: 600; margin: 0 .1rem 0 .4rem; white-space: nowrap; }
-  #passcode {
-    width: 7.5rem; padding: .35rem .6rem; font: inherit; font-size: .8rem; color: inherit;
+  .control-label { font-size: .8rem; font-weight: 600; margin: 0 .1rem 0 .4rem; white-space: nowrap; }
+  #languages, #passcode {
+    padding: .35rem .6rem; font: inherit; font-size: .8rem; color: inherit;
     border: 1px solid var(--line); border-radius: .5rem; background: transparent;
   }
+  /* The native arrow is drawn by the OS and ignores the dark palette, so the
+     control draws its own and keeps the menu itself native. */
+  #languages {
+    appearance: none; padding-right: 1.6rem; cursor: pointer;
+    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                      linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position: right .75rem center, right .5rem center;
+    background-size: .3rem .3rem, .3rem .3rem;
+    background-repeat: no-repeat;
+  }
+  /* The menu is drawn by the OS, so it needs a solid ground of its own. */
+  #languages option { background: Canvas; color: CanvasText; }
+  #passcode { width: 7.5rem; }
 
   /* Middle: the orb, sized to whatever is left, never forcing a scroll. */
   /* The orb and the form sit together in the middle of what is left under the bar. */
@@ -90,8 +97,9 @@
     <p id="status"></p>
   </div>
   <div class="controls">
-    <div id="languages" role="group" aria-label="Language"></div>
-    <label for="passcode" class="code-label">Access code</label>
+    <label for="languages" class="control-label">Language</label>
+    <select id="languages"></select>
+    <label for="passcode" class="control-label">Access code</label>
     <input id="passcode" type="password" autocomplete="off" placeholder="••••••" />
   </div>
 </header>
@@ -139,32 +147,25 @@ if (!window.isSecureContext || !navigator.mediaDevices) {
 
 passcode.addEventListener('keydown', (e) => { if (e.key === 'Enter') button.click(); });
 
-// The languages come from the server, one button each, so a new pack under
-// lang/ shows up here without touching this page.
-let chosen = null;
-let chosenName = '';
-function pick(locale, name) {
-  chosen = locale;
-  chosenName = name;
-  for (const segment of toggle.children) {
-    segment.setAttribute('aria-pressed', String(segment.dataset.locale === locale));
-  }
-}
+// The languages come from the server, in the order the packs ask for, so a new
+// pack under lang/ shows up here without touching this page. The control holds
+// the choice itself, so there is nothing to track alongside it.
+const language = () => ({
+  locale: toggle.value,
+  name: toggle.selectedOptions[0]?.textContent ?? '',
+});
 async function loadLanguages() {
   try {
     const r = await fetch('/api/languages', { cache: 'no-store' });
     const body = await r.json();
     toggle.replaceChildren();
     for (const { locale, name } of body.languages) {
-      const segment = document.createElement('button');
-      segment.type = 'button';
-      segment.textContent = name;
-      segment.dataset.locale = locale;
-      segment.onclick = () => pick(locale, name);
-      toggle.append(segment);
+      const choice = document.createElement('option');
+      choice.value = locale;
+      choice.textContent = name;
+      toggle.append(choice);
     }
-    const first = body.languages.find((l) => l.locale === body.default) || body.languages[0];
-    pick(first.locale, first.name);
+    toggle.value = body.default;
   } catch {
     say('Could not reach the server.');
     button.disabled = true;
@@ -218,7 +219,7 @@ animate();
 
 function setForm(locked) {
   passcode.disabled = purpose.disabled = locked;
-  for (const segment of toggle.children) segment.disabled = locked;
+  toggle.disabled = locked;
   button.hidden = locked;
   hangup.hidden = !locked;
 }
@@ -229,7 +230,8 @@ hangup.onclick = () => room?.disconnect();
 button.onclick = async () => {
   const code = passcode.value.trim();
   if (!code) { passcode.focus(); return say('Enter the access code, top right.'); }
-  if (!chosen) return say('Pick a language first.');
+  const picked = language();
+  if (!picked.locale) return say('Pick a language first.');
 
   button.disabled = true;
   say('Connecting…');
@@ -243,7 +245,7 @@ button.onclick = async () => {
     const response = await fetch('/api/session', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ passcode: code, language: chosen, purpose: purpose.value }),
+      body: JSON.stringify({ passcode: code, language: picked.locale, purpose: purpose.value }),
     });
     const body = await response.json();
     if (!response.ok) {
@@ -266,7 +268,7 @@ button.onclick = async () => {
     if (track.kind === 'audio') {
       track.attach().play?.();
       meters.agent = meter(track.mediaStreamTrack);
-      say(`Connected. Answer in ${chosenName}.`);
+      say(`Connected. Answer in ${picked.name}.`);
     }
   });
   room.on(RoomEvent.Disconnected, () => {
@@ -293,7 +295,7 @@ button.onclick = async () => {
     meters.caller = meter(mic.mediaStreamTrack);
     orb.className = 'on';
     setForm(true);
-    say(`Connected. Wait for the agent to speak, then reply in ${chosenName}.`);
+    say(`Connected. Wait for the agent to speak, then reply in ${picked.name}.`);
   } catch (error) {
     say('Failed: ' + error.message);
     button.disabled = false;

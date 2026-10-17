@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import wave
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from voice_agent import tts
+from voice_agent import stt, tts
 from voice_agent.lang.sd.normalize import SindhiNormalizer, spoken_time
 from voice_agent.language import Normalizer, load
 
@@ -19,10 +20,10 @@ def test_sindhi_loads_on_the_elevenlabs_voice() -> None:
     language = load("sd-PK")
 
     assert language.locale == "sd-PK"
-    assert language.name == "سنڌي"
-    assert language.stt_language == "snd"
+    assert language.name == "Sindhi"
+    assert (language.stt_provider, language.stt_language) == ("gemini", "sd-Arab-IN")
     assert language.tts_provider == "elevenlabs"
-    assert language.tts_voice == "EXAVITQu4vr4xnSDxMaL"
+    assert language.tts_voice == "QfY4EJSXrwbmN0wR4597"
 
 
 def test_urdu_and_english_still_name_azure() -> None:
@@ -41,6 +42,69 @@ def test_the_normalizer_satisfies_the_protocol() -> None:
     assert isinstance(load("sd-PK").normalizer, Normalizer)
 
 
+def test_only_sindhi_names_its_own_recognizer() -> None:
+    assert load("ur-PK").stt_provider == "", "every other pack still follows STT_PROVIDER"
+
+
+# --- the Gemini recognizer, with the websocket faked ---
+
+
+class FakeSocket:
+    def __init__(self) -> None:
+        self.sent: list[dict[str, Any]] = []
+
+    async def send(self, raw: str) -> None:
+        self.sent.append(json.loads(raw))
+
+    async def close(self) -> None:
+        pass
+
+
+async def test_gemini_commit_joins_the_finals_and_restarts_activity() -> None:
+    """The message shapes are the ones the live endpoint sent on 11 Oct 2026."""
+    ears = stt.GeminiStream("key", "model", "sd-Arab-IN", [])
+    ears._socket = FakeSocket()
+
+    ears._take({"serverContent": {"interimInputTranscription": {"text": "توھان جو"}}})
+    ears._take({"serverContent": {"inputTranscription": {"text": "توهان جو نالو"}}})
+    ears._take({"serverContent": {"inputTranscription": {"text": "ڇا آهي؟"}}})
+    ears._take({"serverContent": {"generationComplete": True}})
+    ears._take({"serverContent": {}, "voiceActivity": {"type": "ACTIVITY_END"}})
+
+    assert await ears.commit() == "توهان جو نالو ڇا آهي؟"
+    assert ears._socket.sent == [
+        {"realtimeInput": {"activityEnd": {}}},
+        {"realtimeInput": {"activityStart": {}}},
+    ]
+
+    ears._take({"serverContent": {"generationComplete": True}})
+    assert await ears.commit() == "", "the next turn starts empty"
+
+
+async def test_gemini_reopens_when_the_server_drops_an_empty_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ears = stt.GeminiStream("key", "model", "sd-Arab-IN", [])
+    ears._socket = FakeSocket()
+    reopened = []
+
+    async def reopen() -> None:
+        reopened.append(True)
+
+    monkeypatch.setattr(ears, "open", reopen)
+    ears._turns.put_nowait(RuntimeError("received 1008 (policy violation)"))
+
+    assert await ears.commit() == ""
+    assert reopened == [True]
+    assert ears._socket.sent == [{"realtimeInput": {"activityEnd": {}}}], (
+        "no start on a dead socket"
+    )
+
+
+def test_build_knows_gemini() -> None:
+    assert stt.build("gemini", "key", ["ها"]).name == "gemini-transcribe"
+
+
 @pytest.mark.parametrize(
     "raw, expected",
     [
@@ -52,6 +116,19 @@ def test_the_normalizer_satisfies_the_protocol() -> None:
 )
 def test_from_speech(raw: str, expected: str) -> None:
     assert normalizer.from_speech(raw) == expected
+
+
+def test_for_speech_turns_urdu_letters_into_sindhi_ones() -> None:
+    assert normalizer.for_speech("میرو نالو ہے") == "ميرو نالو هي"
+    assert normalizer.for_speech("ڪتاب ۾ ڳالهه") == "ڪتاب ۾ ڳالهه", "Sindhi letters pass untouched"
+
+
+def test_how_to_speak_sindhi_rides_with_the_persona() -> None:
+    language = load("sd-PK")
+
+    assert "Vicholi" in language.speech
+    assert language.persona.endswith(language.speech)
+    assert load("ur-PK").speech == "", "other packs have not written one"
 
 
 def test_spoken_time_uses_part_of_day_hour_word_and_wagi() -> None:
@@ -117,7 +194,7 @@ def test_synthesize_writes_a_16khz_wav_from_pcm(tmp_path: Path) -> None:
     with wave.open(str(speech.path)) as tape:
         assert (tape.getframerate(), tape.getnchannels(), tape.getnframes()) == (16000, 1, 1600)
     assert client.text_to_speech.requests[0]["output_format"] == "pcm_16000"
-    assert client.text_to_speech.requests[0]["model_id"] == "eleven_v3"
+    assert client.text_to_speech.requests[0]["model_id"] == "eleven_v4"
 
 
 async def test_stream_asks_for_ulaw_and_hands_back_pcm() -> None:
